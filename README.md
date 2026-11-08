@@ -14,4 +14,4 @@ Run `npm ci` and `npm test`. The test suite uses local temporary files. Producti
 
 The two MCP Vercel projects build this repository root. Set `KELVIN_HOST_MODE=public` on `kelvin-mcp` and `KELVIN_HOST_MODE=account` on `kelvin-mcp-account`. The account project also needs the same database connection. The professor dashboard project builds `dashboard/` from this repository.
 
-Changes merged to `main` deploy through Vercel's GitHub integration. Luke has repository admin access and can update the server through GitHub. Keep database credentials and student records out of Git.
+Luke has repository admin access. The GitHub Actions workflow runs tests and deploys all three Vercel projects on pushes to `main`. It needs a `VERCEL_TOKEN` repository Actions secret with access to those projects. Vercel's Hobby plan cannot connect a private organization repository through its built-in Git integration, so the workflow uploads the builds with Vercel CLI. Keep the token, database credentials, and student records out of Git.
