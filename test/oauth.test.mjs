@@ -19,10 +19,15 @@ test('any student can create a lasting OAuth account without an invite', async (
   const port = 35000 + Math.floor(Math.random() * 1000);
   const origin = `http://127.0.0.1:${port}`;
   const env = { ...process.env, KELVIN_MCP_DATA_DIR: dir, PORT: String(port), KELVIN_PUBLIC_ORIGIN: origin,
-    KELVIN_DASHBOARD_ORIGIN: 'https://dashboard.example' };
+    KELVIN_DASHBOARD_ORIGIN: 'https://dashboard.example', KELVIN_HOST_MODE: 'public' };
   const child = spawn(process.execPath, ['server.mjs'], { cwd: import.meta.dirname + '/..', env });
   try {
     await ready(`${origin}/health`);
+    const dashboard = await fetch(`${origin}/dashboard`);
+    assert.equal(dashboard.status, 200);
+    assert.match(await dashboard.text(), /\/dashboard\/app\.js/);
+    assert.equal((await fetch(`${origin}/dashboard/app.js`)).status, 200);
+    assert.equal((await fetch(`${origin}/dashboard/style.css`)).status, 200);
     const resource = `${origin}/mcp/account`;
     const metadata = await fetch(`${origin}/.well-known/oauth-protected-resource/mcp/account`);
     assert.equal(metadata.status, 200);

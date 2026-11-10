@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -15,10 +16,13 @@ import { accountById, completeLogin, createOAuthProvider, loginPage, setSharing,
 
 const { cards, skills } = loadContent();
 const port = Number(process.env.PORT || 3337);
-const origin = process.env.KELVIN_PUBLIC_ORIGIN || 'https://kelvin-mcp-account.vercel.app';
+const origin = process.env.KELVIN_PUBLIC_ORIGIN || 'https://kelvin-mcp.vercel.app';
 const resourceUrl = new URL('/mcp/account', origin);
 const dashboardResourceUrl = new URL('/dashboard-data', origin);
-const dashboardOrigin = process.env.KELVIN_DASHBOARD_ORIGIN || 'https://kelvin-professor-dashboard.vercel.app';
+const dashboardOrigin = process.env.KELVIN_DASHBOARD_ORIGIN || origin;
+const dashboardHtml = readFileSync(new URL('./dashboard/index.html', import.meta.url));
+const dashboardJs = readFileSync(new URL('./dashboard/app.js', import.meta.url));
+const dashboardCss = readFileSync(new URL('./dashboard/style.css', import.meta.url));
 const oauth = createOAuthProvider(resourceUrl, origin, [dashboardResourceUrl]);
 const result = value => ({ content: [{ type: 'text', text: JSON.stringify(value) }] });
 const error = message => ({ content: [{ type: 'text', text: message }], isError: true });
@@ -136,13 +140,12 @@ app.use((req, res, next) => {
   res.once('close', () => log('closed'));
   next();
 });
-app.use((req, res, next) => {
-  if (process.env.KELVIN_HOST_MODE === 'public' && !['/mcp', '/health'].includes(req.path)) return res.status(404).send('Not found');
-  next();
-});
 app.use(['/mcp', '/mcp/account'], express.json({ limit: '32kb', type: 'application/json' }));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'kelvin-mcp', cards: cards.size }));
-if (process.env.KELVIN_HOST_MODE !== 'public') app.use(mcpAuthRouter({ provider: oauth, issuerUrl: new URL(origin), resourceServerUrl: resourceUrl,
+app.get('/dashboard', (_req, res) => res.type('html').send(dashboardHtml));
+app.get('/dashboard/app.js', (_req, res) => res.type('js').send(dashboardJs));
+app.get('/dashboard/style.css', (_req, res) => res.type('css').send(dashboardCss));
+app.use(mcpAuthRouter({ provider: oauth, issuerUrl: new URL(origin), resourceServerUrl: resourceUrl,
   scopesSupported: ['mcp:tools'], resourceName: 'Kelvin: Penn State ME 300 Engineering Thermodynamics learning account' }));
 app.get('/login', async (req, res) => {
   const page = await loginPage(req.query.request);

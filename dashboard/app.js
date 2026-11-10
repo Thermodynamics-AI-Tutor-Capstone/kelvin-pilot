@@ -1,6 +1,6 @@
-const API = 'https://kelvin-mcp-account.vercel.app';
+const API = location.origin;
 const resource = `${API}/dashboard-data`;
-const proxy = action => `/api/kelvin?action=${action}`;
+const proxy = action => ({ register: '/register', token: '/token', data: '/dashboard-data' })[action];
 const app = document.querySelector('#app');
 const signout = document.querySelector('#signout');
 const demo = {
@@ -41,7 +41,7 @@ async function startInstructorLogin() {
   let clientId = localStorage.getItem('kelvin-dashboard-client-id');
   if (!clientId) {
     const response = await fetch(proxy('register'), { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ client_name: 'Kelvin professor dashboard', redirect_uris: [location.origin + '/'],
+      body: JSON.stringify({ client_name: 'Kelvin professor dashboard', redirect_uris: [location.origin + '/dashboard'],
         grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none' }) });
     if (!response.ok) throw new Error('The Kelvin authorization server did not register this dashboard.');
     clientId = (await response.json()).client_id;
@@ -52,7 +52,7 @@ async function startInstructorLogin() {
   const challenge = urlSafe(new Uint8Array(digest));
   sessionStorage.setItem('kelvin-oauth-pending', JSON.stringify({ verifier, stateValue, clientId }));
   const url = new URL(`${API}/authorize`);
-  for (const [key,value] of Object.entries({ response_type: 'code', client_id: clientId, redirect_uri: location.origin + '/',
+  for (const [key,value] of Object.entries({ response_type: 'code', client_id: clientId, redirect_uri: location.origin + '/dashboard',
     code_challenge: challenge, code_challenge_method: 'S256', scope: 'mcp:tools', state: stateValue, resource })) url.searchParams.set(key, value);
   location.assign(url.href);
 }
@@ -63,11 +63,11 @@ async function completeInstructorLogin() {
   const code = params.get('code');
   if (!code) return false;
   const pending = JSON.parse(sessionStorage.getItem('kelvin-oauth-pending') || 'null');
-  history.replaceState(null, '', '/');
+  history.replaceState(null, '', '/dashboard');
   if (!pending || params.get('state') !== pending.stateValue) throw new Error('Sign-in did not match this browser session.');
   const response = await fetch(proxy('token'), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'authorization_code', client_id: pending.clientId, code,
-      code_verifier: pending.verifier, redirect_uri: location.origin + '/', resource }) });
+      code_verifier: pending.verifier, redirect_uri: location.origin + '/dashboard', resource }) });
   sessionStorage.removeItem('kelvin-oauth-pending');
   if (!response.ok) throw new Error('Kelvin could not finish sign-in. Please try again.');
   const tokens = await response.json();

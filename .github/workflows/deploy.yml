@@ -28,23 +28,10 @@ jobs:
     needs: test
     if: vars.CI_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: public-mcp
-            directory: .
-            project: prj_lH05HawLc4yRn0qNl4FFKPthyCyT
-          - name: account-mcp
-            directory: .
-            project: prj_5bKGSo1WK2QGsRgjIvpLJhFhVklh
-          - name: professor-dashboard
-            directory: dashboard
-            project: prj_Med7HgJJ7k8LUuolLI1skejvYYjA
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: team_rMoj1lNflIwVxJhItt4bIKan
-      VERCEL_PROJECT_ID: ${{ matrix.project }}
+      VERCEL_PROJECT_ID: prj_lH05HawLc4yRn0qNl4FFKPthyCyT
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -59,7 +46,6 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@65.11.0
       - name: Build and deploy
-        working-directory: ${{ matrix.directory }}
         run: |
           mkdir -p .vercel
           printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
