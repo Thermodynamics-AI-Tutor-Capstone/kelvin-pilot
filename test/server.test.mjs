@@ -70,6 +70,15 @@ test('MCP authenticates, reads cards, isolates students, and suppresses small co
     assert.ok(publicTools.includes('search_course'));
     assert.ok(!publicTools.includes('record_learning'));
     assert.ok(!publicTools.includes('course_trends'));
+    const teachingSkills = parse(await publicClient.callTool({ name: 'list_teaching_skills', arguments: {} }));
+    const pacing = teachingSkills.find(skill => skill.name === 'response-pacing');
+    assert.ok(pacing, 'Response pacing is discoverable through the public connector');
+    const pacingReply = await publicClient.callTool({ name: 'get_teaching_skill', arguments: { name: pacing.name } });
+    assert.ok(!pacingReply.isError);
+    const pacingContent = parse(pacingReply);
+    assert.equal(pacingContent.name, pacing.name);
+    assert.equal(pacingContent.description, pacing.description);
+    assert.ok(pacingContent.content.trim().length > 0, 'The discovered skill can be loaded');
     await publicClient.close();
     const denied = await fetch(`${base}/mcp`, { method: 'POST', headers: { Authorization: 'Bearer wrong' } });
     assert.equal(denied.status, 401);

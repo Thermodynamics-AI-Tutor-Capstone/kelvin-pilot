@@ -4,7 +4,7 @@ import YAML from 'yaml';
 
 const root = join(import.meta.dirname, 'agent');
 const kinds = ['course', 'units', 'topics', 'misconceptions'];
-const skillNames = ['answer-requests', 'what-next', 'misconception-repair', 'property-tables', 'control-volume-energy-balance'];
+const skillNames = ['answer-requests', 'what-next', 'misconception-repair', 'property-tables', 'control-volume-energy-balance', 'response-pacing'];
 function parse(path) {
   const text = readFileSync(path, 'utf8');
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(text);
