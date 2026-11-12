@@ -1,4 +1,4 @@
-const origin = 'https://kelvin-mcp-account.vercel.app';
+const origin = 'https://kelvin-mcp.vercel.app';
 const routes = { register: { method: 'POST', path: '/register' }, token: { method: 'POST', path: '/token' }, data: { method: 'GET', path: '/dashboard-data' } };
 
 export default async function handler(req, res) {

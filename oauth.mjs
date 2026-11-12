@@ -1,6 +1,7 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { InvalidGrantError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { mutateState, readState } from './persistence.mjs';
+import { enrollStudent, professors } from './demo.mjs';
 
 const accountsKey = 'accounts.json';
 const oauthKey = 'oauth-state.json';
@@ -32,7 +33,7 @@ export async function addInstructorHash(id, name, salt, passwordHash) {
   });
   return { id, name: name.trim(), role: 'instructor' };
 }
-export async function accountById(id) { return (await accounts()).find(a => a.id === id && !a.disabled && a.passwordHash) || null; }
+export async function accountById(id) { return (await accounts()).find(a => a.id === id && !a.disabled && (a.passwordHash || a.demoEmailOnly)) || null; }
 export async function sharedStudents() { return (await accounts()).filter(a => a.role === 'student' && !a.disabled && a.passwordHash && a.shareWithInstructor)
   .map(({ id, name }) => ({ id, name })); }
 export async function setSharing(id, enabled) {
@@ -151,18 +152,21 @@ export async function loginPage(requestId, message = '') {
   if (!pending || pending.expiresAt < now()) return null;
   const dashboard = pending.resource.endsWith('/dashboard-data');
   const title = dashboard ? 'Sign in to the Kelvin instructor dashboard' : 'Connect Kelvin to Claude';
-  const intro = dashboard ? 'Use your instructor account to view ME 300 records students chose to share.' : 'Anyone can create a Kelvin learning account. No course invite is needed. You can also use the public course tools without an account.';
-  const sharing = dashboard ? '' : '<label><input name="share" type="checkbox" value="yes">My instructor can see the reflections I save, along with my name. I can turn this off later.</label>';
-  const note = dashboard ? 'This account is separate from your Claude account.' : 'After connecting, ask Claude for your Kelvin account ID and save it with your password. Kelvin only saves reflections you ask Claude to send.';
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to Kelvin</title><style>body{font:16px system-ui;max-width:520px;margin:7vh auto;padding:24px;color:#1d2730}h1{font-size:1.7em}form{border:1px solid #ccd5dc;border-radius:12px;padding:20px;margin:18px 0}label{display:block;margin:12px 0}input{display:block;box-sizing:border-box;width:100%;padding:10px;margin-top:5px}input[type=checkbox]{display:inline;width:auto;margin-right:8px}button{background:#164a71;color:white;border:0;border-radius:7px;padding:11px 18px;cursor:pointer}.error{color:#a12626}.note{color:#59636b;font-size:.9em}</style><h1>${title}</h1><p>${intro}</p>${message ? `<p class="error">${escape(message)}</p>` : ''}${dashboard ? '' : `<form method="post" action="/login"><h2>New here?</h2><input type="hidden" name="request" value="${escape(request)}"><label>Your name<input name="name" autocomplete="name" minlength="2" maxlength="120" required></label><label>Create a password (12 characters or more)<input name="password" type="password" minlength="12" required></label>${sharing}<button name="action" value="create">Create account and connect</button></form>`}<form method="post" action="/login"><h2>Already have an account?</h2><input type="hidden" name="request" value="${escape(request)}"><label>Account ID<input name="account" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button name="action" value="sign-in">Sign in and connect</button></form><p class="note">${note}</p></html>`;
+  const intro = dashboard ? 'Use your instructor account to see aggregate course activity.' : 'Enter your PSU email and choose your professor’s course. Kelvin will remember this pairing when you reconnect.';
+  const options = (await professors()).flatMap(professor => professor.courses.map(course =>
+    `<option value="${escape(course.id)}">${escape(professor.name)} · ${escape(course.code)}: ${escape(course.title)}</option>`)).join('');
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect Kelvin</title><style>body{font:16px system-ui;max-width:540px;margin:7vh auto;padding:24px;color:#1d2730}h1{font-size:1.7em}form{border:1px solid #ccd5dc;border-radius:12px;padding:20px;margin:18px 0}label{display:block;margin:12px 0}input,select{display:block;box-sizing:border-box;width:100%;padding:10px;margin-top:5px}button{background:#164a71;color:white;border:0;border-radius:7px;padding:11px 18px;cursor:pointer}.error{color:#a12626}.note{color:#59636b;font-size:.9em}</style><h1>${title}</h1><p>${intro}</p>${message ? `<p class="error">${escape(message)}</p>` : ''}${dashboard ? '' : `<form method="post" action="/login"><input type="hidden" name="request" value="${escape(request)}"><label>PSU email<input name="email" type="email" autocomplete="email" placeholder="you@psu.edu" required></label><label>Professor and course<select name="course" required>${options}</select></label><button name="action" value="email">Connect to Kelvin</button></form><p class="note">Demo sign-in: email ownership is not verified. Use only test data. Reflections are saved only when you explicitly ask Claude to save them.</p>`}<form method="post" action="/login"><h2>${dashboard ? 'Instructor sign-in' : 'Existing password account'}</h2><input type="hidden" name="request" value="${escape(request)}"><label>Account ID<input name="account" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button name="action" value="sign-in">Sign in and connect</button></form></html>`;
 }
 export async function completeLogin(input) {
   const requestId = String(input.request || ''), pending = (await state()).pending[hex(requestId)];
   if (!pending || pending.expiresAt < now()) return { error: 'This sign-in request expired. Start again in Claude.' };
   const password = String(input.password || '');
   const dashboard = pending.resource.endsWith('/dashboard-data');
-  const account = input.action === 'create' && !dashboard ? await createStudent(String(input.name || ''), password, input.share === 'yes')
-    : input.action === 'sign-in' ? await signIn(String(input.account || ''), password) : null;
+  let account;
+  if (input.action === 'email' && !dashboard) {
+    try { account = await enrollStudent(input.email, input.course); } catch { return { error: 'Enter a PSU email and choose a valid course.' }; }
+  } else if (input.action === 'create' && !dashboard) account = await createStudent(String(input.name || ''), password, input.share === 'yes');
+  else if (input.action === 'sign-in') account = await signIn(String(input.account || ''), password);
   if (!account) return { error: 'The name, account, or password was not accepted.' };
   if (dashboard && account.role !== 'instructor') return { error: 'An instructor account is required.' };
   const code = secret();

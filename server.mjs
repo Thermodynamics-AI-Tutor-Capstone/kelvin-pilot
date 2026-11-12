@@ -9,39 +9,49 @@ import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelconte
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { z } from 'zod';
 import { loadContent, metadata, provenance, searchCards } from './content.mjs';
-import { addEvent, allEvents, authenticate, trends } from './store.mjs';
+import { addEvent, allEvents } from './store.mjs';
 import { classify } from './classify.mjs';
 import { writeRequestLog } from './request-log.mjs';
-import { accountById, completeLogin, createOAuthProvider, loginPage, setSharing, sharedStudents } from './oauth.mjs';
+import { accountById, completeLogin, createOAuthProvider, loginPage } from './oauth.mjs';
+import { professors, enrollStudent, registerProfessor, signInProfessor, makeSession, sessionAccount, revokeSession,
+  courses, courseById, createCourse, courseFiles, fileMetadata, addCourseFile, recordUsage, studentSummary, courseAnalytics, stockCards } from './demo.mjs';
 
 const { cards, skills } = loadContent();
 const port = Number(process.env.PORT || 3337);
 const origin = process.env.KELVIN_PUBLIC_ORIGIN || 'https://kelvin-mcp.vercel.app';
-const resourceUrl = new URL('/mcp/account', origin);
+const resourceUrl = new URL('/mcp', origin);
+const accountResourceUrl = new URL('/mcp/account', origin);
 const dashboardResourceUrl = new URL('/dashboard-data', origin);
 const dashboardOrigin = process.env.KELVIN_DASHBOARD_ORIGIN || origin;
 const dashboardHtml = readFileSync(new URL('./dashboard/index.html', import.meta.url));
 const dashboardJs = readFileSync(new URL('./dashboard/app.js', import.meta.url));
 const dashboardCss = readFileSync(new URL('./dashboard/style.css', import.meta.url));
-const oauth = createOAuthProvider(resourceUrl, origin, [dashboardResourceUrl]);
+const oauth = createOAuthProvider(resourceUrl, origin, [accountResourceUrl, dashboardResourceUrl]);
 const result = value => ({ content: [{ type: 'text', text: JSON.stringify(value) }] });
 const error = message => ({ content: [{ type: 'text', text: message }], isError: true });
 
-function makeMcp(user) {
+async function makeMcp(user) {
+  const course = user.courseId ? await courseById(user.courseId) : null;
+  const files = course ? await courseFiles(course.id) : [];
   const mcp = new McpServer({ name: 'kelvin-thermodynamics-me300', title: 'Kelvin: Penn State ME 300 Engineering Thermodynamics', version: '0.1.0' }, {
     capabilities: { tools: {} },
     instructions: 'Kelvin provides real Penn State ME 300 Engineering Thermodynamics course content from Dr. Jacqueline O’Connor’s Summer 2023 Canvas section. Use it as the course reference for substantive thermodynamics questions: call course_map once per conversation, then search_course and get_card for the relevant topic or misconception before answering. Use teaching skills when they fit the task. For dates, grading, and policies, identify the Summer 2023 term and check the student’s current Canvas section. Do not save a learning reflection unless the student explicitly asks.'
   });
   const publicSecurity = user.role === 'anonymous' ? { _meta: { securitySchemes: [{ type: 'noauth' }] } } : {};
-  if (user.role !== 'anonymous') mcp.registerTool('my_account', { description: 'Show the Kelvin account and role attached to this authenticated connector.' },
-    async () => result({ id: user.id, name: user.name || null, role: user.role,
-      shareWithInstructor: user.role === 'student' ? Boolean((await accountById(user.id))?.shareWithInstructor) : undefined }));
+  if (user.role !== 'anonymous') mcp.registerTool('my_account', { description: 'Show the Kelvin email, course, and role attached to this connector.' },
+    async () => { const account = await accountById(user.id); return result({ id: user.id, name: user.name || null,
+      email: account?.email || null, role: user.role, courseId: user.courseId || null }); });
   mcp.registerTool('course_map', { title: 'ME 300 thermodynamics course map', description: 'For thermodynamics questions, start here once per conversation. This is real Penn State ME 300 Engineering Thermodynamics course content: systems, properties, phase change, first and second laws, entropy, control volumes, and cycles. Returns the course map so you can choose the right topic card. Course logistics are from Summer 2023; current dates and policies come from the student’s Canvas.', ...publicSecurity }, () =>
-    result({ subject: 'Penn State ME 300 Engineering Thermodynamics', sourceMaterial: 'actual Penn State course files', use: 'For a thermodynamics topic, search_course for matching cards, then get_card before explaining or tutoring. Check current Canvas for dates and policies.', provenance, course: metadata(cards.get('course:me300')),
-      units: [...cards.values()].filter(c => c.kind === 'unit').map(metadata) }));
+    result({ subject: course?.title || 'Penn State ME 300 Engineering Thermodynamics', courseId: course?.id,
+      sourceMaterial: 'actual Penn State course files', use: 'For a thermodynamics topic, search_course for matching cards, then get_card before explaining or tutoring. Check current Canvas for dates and policies.', provenance, course: metadata(cards.get('course:me300')),
+      units: [...cards.values()].filter(c => c.kind === 'unit').map(metadata),
+      uploadedFiles: files.map(fileMetadata) }));
   mcp.registerTool('search_course', { title: 'Search thermodynamics topics and misconceptions', description: 'Use this for each substantive thermodynamics or ME 300 question to find the relevant course topic, concept, equation context, or common misconception. Search terms such as entropy, vapor tables, first law, turbines, refrigeration, or Carnot. Returns brief metadata; call get_card on the matching ID for the actual content before answering.', ...publicSecurity,
     inputSchema: { query: z.string().max(160), kind: z.enum(['course', 'unit', 'topic', 'misconception']).optional() } },
-  ({ query, kind }) => result({ provenance, matches: searchCards(cards, query, kind) }));
+  ({ query, kind }) => result({ provenance, matches: [
+    ...searchCards(cards, query, kind),
+    ...(!kind ? files.filter(f => `${f.name} ${f.text}`.toLowerCase().includes(query.toLowerCase()))
+      .slice(0, 5).map(f => ({ id: f.id, kind: 'file', title: f.name, description: f.text.slice(0, 180) })) : [])] }));
   mcp.registerTool('get_card', { title: 'Read a thermodynamics course card', description: 'After search_course, read the exact Penn State ME 300 Engineering Thermodynamics topic or misconception card before explaining the concept or guiding a problem. Topic cards draw on real course files; misconception cards draw on cited research. The card status describes how the study note was prepared, not whether the course is real. Summer 2023 dates and policies may differ from the student’s current section.', ...publicSecurity,
     inputSchema: { id: z.string().max(120) } }, ({ id }) => {
       const card = cards.get(id);
@@ -57,18 +67,25 @@ function makeMcp(user) {
       const skill = skills.get(name);
       return skill ? result({ name, description: skill.description, content: skill.body }) : error('Skill not found');
     });
+  if (course) {
+    mcp.registerTool('list_course_files', { description: 'List files uploaded by this course’s professor. Use when the student asks about a syllabus, assignment, or other course-specific document.' },
+      () => result({ course: { id: course.id, title: course.title }, files: files.map(fileMetadata) }));
+    mcp.registerTool('get_course_file', { description: 'Read the text of a file uploaded by this course’s professor. Call list_course_files or search_course to find its ID first.',
+      inputSchema: { id: z.string().max(100) } }, ({ id }) => {
+        const file = files.find(f => f.id === id);
+        return file ? result({ ...fileMetadata(file), content: file.text }) : error('File is not in this course');
+      });
+  }
   if (user.role === 'student') {
-    if (user.account) mcp.registerTool('share_with_instructor', { description: 'Set whether the course instructor may see your saved learning reflections under your name. This can be changed anytime.',
-      inputSchema: { enabled: z.boolean() } }, async ({ enabled }) => result({ shareWithInstructor: await setSharing(user.id, enabled) }));
     mcp.registerTool('record_learning', { description: 'Save a short learning reflection and classify its topics with DeepSeek. Only call after the student explicitly asks to save what they worked on. Misconception labels are tentative, not diagnoses.',
       inputSchema: { statement: z.string().min(10).max(1000), consent: z.literal(true) } }, async ({ statement }) => {
         try {
           const labels = await classify(statement, cards);
-          await addEvent({ studentId: user.id, statement, ...labels, classificationStatus: 'classified' });
+          await addEvent({ studentId: user.id, courseId: user.courseId || null, statement, ...labels, classificationStatus: 'classified' });
           return result({ saved: true, classificationStatus: 'classified', ...labels, note: 'Misconception labels are hypotheses. You can correct them or ask the operator to delete this record.' });
         } catch (e) {
           console.error('Learning classification unavailable:', e.message);
-          await addEvent({ studentId: user.id, statement, topics: [], misconceptions: [], summary: '', classificationStatus: 'pending' });
+          await addEvent({ studentId: user.id, courseId: user.courseId || null, statement, topics: [], misconceptions: [], summary: '', classificationStatus: 'pending' });
           return result({ saved: true, classificationStatus: 'pending', note: 'Your reflection was saved. Topic classification is pending; no misconception was inferred.' });
         }
       });
@@ -78,21 +95,15 @@ function makeMcp(user) {
     });
   }
   if (user.role === 'instructor') {
-    mcp.registerTool('course_trends', { description: 'Instructor-only aggregate trends from students who explicitly saved learning reflections. At least five distinct students are required; no identities or statements are returned.' },
-      async () => result(await trends()));
-    if (user.account) {
-      mcp.registerTool('shared_students', { description: 'List students who explicitly allowed this course instructor to see their named learning reflections.' },
-        async () => result(await sharedStudents()));
-      mcp.registerTool('student_learning', { description: 'Read saved learning reflections for one student who explicitly enabled instructor sharing.',
-        inputSchema: { student_id: z.string().max(80) } }, async ({ student_id }) => {
-          const student = (await sharedStudents()).find(s => s.id === student_id);
-          if (!student) return error('Student has not enabled instructor sharing');
-          const own = (await allEvents()).filter(e => e.studentId === student_id);
-          const records = own.slice(-20).reverse()
-            .map(({ studentId, ...event }) => event);
-          return result({ student, total: own.length, recent: records });
-        });
-    }
+    mcp.registerTool('list_my_courses', { description: 'List courses owned by this professor, including the stock ME 300 course and courses created in the dashboard.' },
+      async () => result((await courses()).filter(item => item.professorId === user.id)));
+    mcp.registerTool('course_trends', { description: 'Instructor-only aggregate activity for one of your courses. At least five distinct students are required; no identities, email addresses, or raw statements are returned.',
+      inputSchema: { course_id: z.string().max(100).optional() } },
+    async ({ course_id }) => {
+      const selected = course_id || user.courseId;
+      const allowed = (await courses()).some(item => item.id === selected && item.professorId === user.id);
+      return allowed ? result(await courseAnalytics(selected)) : error('Course unavailable');
+    });
   }
   return mcp;
 }
@@ -101,11 +112,19 @@ async function handleMcp(req, res, user) {
   if (Number(req.headers['content-length'] || 0) > 32768) {
     res.writeHead(413); res.end('Request too large'); return;
   }
-  const mcp = makeMcp(user);
+  const mcp = await makeMcp(user);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   try {
     await mcp.connect(transport);
     await transport.handleRequest(req, res, req.body);
+    if (user.role === 'student' && user.courseId && req.body?.method === 'tools/call') {
+      const tool = String(req.body.params?.name || '');
+      if (['course_map', 'search_course', 'get_card', 'list_course_files', 'get_course_file', 'get_teaching_skill'].includes(tool)) {
+        const cardId = tool === 'get_card' || tool === 'get_course_file' ? String(req.body.params?.arguments?.id || '')
+          : tool === 'search_course' ? searchCards(cards, String(req.body.params?.arguments?.query || ''), undefined, 1)[0]?.id : null;
+        await recordUsage({ studentId: user.id, courseId: user.courseId, tool, cardId: cardId || null });
+      }
+    }
   } catch (e) {
     console.error('MCP request failed:', e.message);
     if (!res.headersSent) { res.writeHead(500); res.end('MCP request failed'); }
@@ -141,12 +160,90 @@ app.use((req, res, next) => {
   next();
 });
 app.use(['/mcp', '/mcp/account'], express.json({ limit: '32kb', type: 'application/json' }));
+app.use('/api', express.json({ limit: '3mb' }));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'kelvin-mcp', cards: cards.size }));
 app.get('/dashboard', (_req, res) => res.type('html').send(dashboardHtml));
 app.get('/dashboard/app.js', (_req, res) => res.type('js').send(dashboardJs));
 app.get('/dashboard/style.css', (_req, res) => res.type('css').send(dashboardCss));
+app.get('/api/professors', async (_req, res) => res.json(await professors()));
+app.get('/api/public-content', (_req, res) => res.json({ cards: stockCards(),
+  skills: [...skills].map(([name, skill]) => ({ id: name, name, description: skill.description })), files: [] }));
+app.get('/api/public-content/cards/:id', (req, res) => {
+  const card = cards.get(req.params.id);
+  return card ? res.json({ ...metadata(card), content: card.body }) : res.status(404).json({ error: 'Card unavailable' });
+});
+app.get('/api/public-content/skills/:id', (req, res) => {
+  const skill = skills.get(req.params.id);
+  return skill ? res.json({ id: req.params.id, title: req.params.id.replaceAll('-', ' '), kind: 'skill',
+    description: skill.description, content: skill.body }) : res.status(404).json({ error: 'Skill unavailable' });
+});
+const demoRateLimit = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false });
+app.post('/api/student-session', demoRateLimit, async (req, res) => {
+  try { return res.json(await makeSession(await enrollStudent(req.body?.email, req.body?.courseId))); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.post('/api/professor-register', demoRateLimit, async (req, res) => {
+  try { return res.json(await makeSession(await registerProfessor(req.body || {}))); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.post('/api/professor-session', demoRateLimit, async (req, res) => {
+  const account = await signInProfessor(req.body?.email, req.body?.password);
+  return account ? res.json(await makeSession(account)) : res.status(401).json({ error: 'Email or password not recognized' });
+});
+async function demoAccount(req, res, next) {
+  const token = /^Bearer (.+)$/i.exec(req.headers.authorization || '')?.[1];
+  const account = await sessionAccount(token);
+  if (!account) return res.status(401).json({ error: 'Sign in again' });
+  req.demoAccount = account;
+  req.demoToken = token;
+  return next();
+}
+app.post('/api/logout', demoAccount, async (req, res) => { await revokeSession(req.demoToken); res.sendStatus(204); });
+app.get('/api/me', demoAccount, async (req, res) => res.json(req.demoAccount));
+app.get('/api/student', demoAccount, async (req, res) => req.demoAccount.role === 'student'
+  ? res.json(await studentSummary(req.demoAccount)) : res.status(403).json({ error: 'Student account required' }));
+app.get('/api/courses', demoAccount, async (req, res) => res.json((await courses()).filter(course =>
+  req.demoAccount.role === 'instructor' ? course.professorId === req.demoAccount.id : course.id === req.demoAccount.courseId)));
+app.post('/api/courses', demoAccount, async (req, res) => {
+  if (req.demoAccount.role !== 'instructor') return res.status(403).json({ error: 'Professor account required' });
+  try { return res.status(201).json(await createCourse(req.demoAccount.id, req.body || {})); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+async function requireCourse(req, res, next) {
+  const course = await courseById(req.params.courseId);
+  if (!course || (req.demoAccount.role === 'instructor' ? course.professorId !== req.demoAccount.id : course.id !== req.demoAccount.courseId))
+    return res.status(404).json({ error: 'Course unavailable' });
+  req.course = course;
+  return next();
+}
+app.get('/api/courses/:courseId', demoAccount, requireCourse, async (req, res) =>
+  res.json({ course: req.course, cards: stockCards(), skills: [...skills].map(([name, skill]) => ({ id: name, name, description: skill.description })),
+    files: (await courseFiles(req.course.id)).map(fileMetadata) }));
+app.get('/api/courses/:courseId/cards/:cardId', demoAccount, requireCourse, (req, res) => {
+  const card = cards.get(req.params.cardId);
+  return card ? res.json({ ...metadata(card), content: card.body }) : res.status(404).json({ error: 'Card unavailable' });
+});
+app.get('/api/courses/:courseId/skills/:skillId', demoAccount, requireCourse, (req, res) => {
+  const skill = skills.get(req.params.skillId);
+  return skill ? res.json({ id: req.params.skillId, title: req.params.skillId.replaceAll('-', ' '), kind: 'skill',
+    description: skill.description, content: skill.body }) : res.status(404).json({ error: 'Skill unavailable' });
+});
+app.get('/api/courses/:courseId/files/:fileId', demoAccount, requireCourse, async (req, res) => {
+  const file = (await courseFiles(req.course.id)).find(f => f.id === req.params.fileId);
+  return file ? res.json({ ...fileMetadata(file), content: file.text }) : res.status(404).json({ error: 'File unavailable' });
+});
+app.post('/api/courses/:courseId/files', demoAccount, requireCourse, async (req, res) => {
+  if (req.demoAccount.role !== 'instructor') return res.status(403).json({ error: 'Professor account required' });
+  try { return res.status(201).json(await addCourseFile(req.demoAccount.id, req.course.id, req.body?.name, req.body?.mimeType, req.body?.base64)); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.get('/api/courses/:courseId/analytics', demoAccount, requireCourse, async (req, res) =>
+  req.demoAccount.role === 'instructor' ? res.json(await courseAnalytics(req.course.id)) : res.status(403).json({ error: 'Professor account required' }));
 app.use(mcpAuthRouter({ provider: oauth, issuerUrl: new URL(origin), resourceServerUrl: resourceUrl,
   scopesSupported: ['mcp:tools'], resourceName: 'Kelvin: Penn State ME 300 Engineering Thermodynamics learning account' }));
+app.get('/.well-known/oauth-protected-resource/mcp/account', (_req, res) => res.json({
+  resource: accountResourceUrl.href, authorization_servers: [origin], scopes_supported: ['mcp:tools'],
+  resource_name: 'Kelvin: Penn State ME 300 Engineering Thermodynamics learning account' }));
 app.get('/login', async (req, res) => {
   const page = await loginPage(req.query.request);
   res.set('Cache-Control', 'no-store');
@@ -170,30 +267,24 @@ app.use('/dashboard-data', (req, res, next) => {
 app.get('/dashboard-data', requireBearerAuth({ verifier: oauth, requiredScopes: ['mcp:tools'], expectedResource: dashboardResourceUrl }), async (req, res) => {
   const account = await accountById(req.auth?.extra?.accountId);
   if (account?.role !== 'instructor') return res.status(403).json({ error: 'Instructor account required' });
-  const studentId = String(req.query.student_id || '');
-  if (studentId) {
-    const student = (await sharedStudents()).find(s => s.id === studentId);
-    if (!student) return res.status(404).json({ error: 'Student has not enabled instructor sharing' });
-    const own = (await allEvents()).filter(e => e.studentId === studentId);
-    return res.json({ student, total: own.length, recent: own.slice(-20).reverse()
-      .map(({ studentId: _id, ...event }) => event) });
-  }
-  return res.json({ instructor: { id: account.id, name: account.name }, trends: await trends(), students: await sharedStudents() });
+  return res.json({ instructor: { id: account.id, name: account.name },
+    trends: await courseAnalytics(`course-${account.id}`) });
 });
 app.all('/mcp/account', requireBearerAuth({ verifier: oauth, requiredScopes: ['mcp:tools'],
-  resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(resourceUrl), expectedResource: resourceUrl }),
+  resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(accountResourceUrl), expectedResource: accountResourceUrl }),
   async (req, res) => {
     const account = await accountById(req.auth?.extra?.accountId);
     if (!account) return res.status(401).json({ error: 'Account is unavailable' });
-    return handleMcp(req, res, { id: account.id, name: account.name, role: account.role, account: true });
+    return handleMcp(req, res, { id: account.id, name: account.name, role: account.role, account: true,
+      courseId: account.role === 'instructor' ? `course-${account.id}` : account.courseId || null });
   });
-app.all('/mcp', async (req, res) => {
+app.all('/mcp', requireBearerAuth({ verifier: oauth, requiredScopes: ['mcp:tools'],
+  resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(resourceUrl), expectedResource: resourceUrl }), async (req, res) => {
   if (req.method !== 'POST') return res.set('Allow', 'POST').status(405).json({ error: 'Use MCP Streamable HTTP POST' });
-  const authorization = req.headers.authorization || '';
-  const token = /^Bearer (.+)$/i.exec(authorization)?.[1];
-  const user = token ? await authenticate(token) : { role: 'anonymous' };
-  if (authorization && (!token || !user)) return res.status(401).json({ error: 'Invalid bearer token' });
-  return handleMcp(req, res, user);
+  const account = await accountById(req.auth?.extra?.accountId);
+  if (!account) return res.status(401).json({ error: 'Account is unavailable' });
+  return handleMcp(req, res, { id: account.id, name: account.name, role: account.role, account: true,
+    courseId: account.role === 'instructor' ? `course-${account.id}` : account.courseId || null });
 });
 export default app;
 if (process.env.VERCEL !== '1') {

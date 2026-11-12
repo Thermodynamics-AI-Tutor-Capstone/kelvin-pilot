@@ -16,6 +16,7 @@ async function database() {
   if (!schemaReady) schemaReady = (async () => {
     await pool.query('CREATE TABLE IF NOT EXISTS kelvin_state (key text PRIMARY KEY, value jsonb NOT NULL)');
     await pool.query('CREATE TABLE IF NOT EXISTS kelvin_events (id uuid PRIMARY KEY, at timestamptz NOT NULL, value jsonb NOT NULL)');
+    await pool.query('CREATE TABLE IF NOT EXISTS kelvin_usage (id uuid PRIMARY KEY, at timestamptz NOT NULL, value jsonb NOT NULL)');
   })().catch(error => { schemaReady = null; throw error; });
   await schemaReady;
   return pool;
@@ -80,6 +81,24 @@ export async function storedEvents() {
   if (db) return (await db.query('SELECT value FROM kelvin_events ORDER BY at, id')).rows.map(row => row.value);
   const path = localPath('events.jsonl');
   return existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+}
+
+export async function addStoredUsage(event) {
+  const value = { id: randomUUID(), at: new Date().toISOString(), ...event };
+  const db = await database();
+  if (db) await db.query('INSERT INTO kelvin_usage (id, at, value) VALUES ($1, $2, $3::jsonb)', [value.id, value.at, JSON.stringify(value)]);
+  else {
+    mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+    appendFileSync(localPath('usage.jsonl'), `${JSON.stringify(value)}\n`, { mode: 0o600 });
+  }
+  return value;
+}
+
+export async function storedUsage(courseId) {
+  const db = await database();
+  if (db) return (await db.query("SELECT value FROM kelvin_usage WHERE value->>'courseId' = $1 ORDER BY at, id", [courseId])).rows.map(row => row.value);
+  const path = localPath('usage.jsonl');
+  return existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(row => row.courseId === courseId) : [];
 }
 
 export async function deleteStoredEvents(studentId) {
