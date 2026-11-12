@@ -6,14 +6,14 @@ const state = { token: sessionStorage.getItem('kelvin-demo-token'), account: nul
   detail: null, analytics: null, student: null, tab: 'activity', category: 'topic', query: '', selected: null, preview: false };
 const demoAnalytics = () => {
   const now = new Date(); now.setUTCHours(0, 0, 0, 0);
-  const requests = [12, 18, 15, 26, 31, 22, 19, 33, 41, 38, 45, 42, 58, 53];
-  const reflections = [5, 6, 5, 8, 7, 6, 5, 9, 10, 8, 12, 11, 13, 12];
+  const requests = [18, 24, 21, 34, 38, 29, 26, 43, 51, 47, 58, 54, 67, 63];
+  const reflections = [6, 7, 6, 9, 10, 8, 7, 11, 14, 12, 16, 15, 19, 17];
   return { suppressed: false, sample: true, timeline: requests.map((count, index) => ({
     date: new Date(now.getTime() - (13 - index) * 86400_000).toISOString().slice(0, 10), requests: count, reflections: reflections[index] })),
-    topicTrends: [{ id: 'topic:m7-07-entropy', previous: 12, recent: 21 }, { id: 'topic:m5-04-energy-conservation', previous: 18, recent: 16 }, { id: 'topic:m4-03-phase-decision-tree', previous: 9, recent: 14 }],
-    questionTrends: [{ id: 'topic:m7-07-entropy', previous: 16, recent: 25 }, { id: 'topic:m5-04-energy-conservation', previous: 14, recent: 18 }],
-    cardTrends: [{ id: 'topic:m7-07-entropy', previous: 15, recent: 27 }, { id: 'topic:m4-03-phase-decision-tree', previous: 11, recent: 19 }],
-    misconceptionTrends: [{ id: 'misc:m15-adiabatic-implies-isentropic', previous: 6, recent: 13 }, { id: 'misc:m01-heat-energy-temperature-conflated', previous: 9, recent: 8 }],
+    topicTrends: [{ id: 'topic:m7-07-entropy', previous: 12, recent: 23 }, { id: 'topic:m5-04-energy-conservation', previous: 18, recent: 21 }, { id: 'topic:m4-03-phase-decision-tree', previous: 9, recent: 17 }, { id: 'topic:m6-03-example-steady-flow-energy-conservation', previous: 8, recent: 14 }, { id: 'topic:m8-03-heat-pump-refrigerator', previous: 6, recent: 12 }],
+    questionTrends: [{ id: 'topic:m7-07-entropy', previous: 16, recent: 29 }, { id: 'topic:m5-04-energy-conservation', previous: 14, recent: 24 }, { id: 'topic:m4-03-phase-decision-tree', previous: 11, recent: 19 }, { id: 'topic:m6-03-example-steady-flow-energy-conservation', previous: 9, recent: 15 }, { id: 'topic:m8-03-heat-pump-refrigerator', previous: 7, recent: 13 }],
+    cardTrends: [{ id: 'topic:m7-07-entropy', previous: 15, recent: 30 }, { id: 'topic:m4-03-phase-decision-tree', previous: 11, recent: 21 }, { id: 'topic:m5-04-energy-conservation', previous: 13, recent: 19 }, { id: 'topic:m6-03-example-steady-flow-energy-conservation', previous: 7, recent: 14 }],
+    misconceptionTrends: [{ id: 'misc:m15-adiabatic-implies-isentropic', previous: 6, recent: 14 }, { id: 'misc:m01-heat-energy-temperature-conflated', previous: 9, recent: 11 }, { id: 'misc:m05-adiabatic-and-isothermal-conflated', previous: 8, recent: 10 }, { id: 'misc:m07-work-is-not-energy-transfer', previous: 7, recent: 9 }],
     misconceptions: [{ id: 'misc:m15-adiabatic-implies-isentropic', count: 13 }, { id: 'misc:m01-heat-energy-temperature-conflated', count: 9 }] };
 };
 function error(message) { const node = document.querySelector('#message'); if (node) node.textContent = message; }
@@ -92,6 +92,7 @@ async function loadCourse() {
   const id = encodeURIComponent(state.courseId);
   state.detail = await api(`/api/courses/${id}`);
   state.analytics = state.account.role === 'instructor' ? await api(`/api/courses/${id}/analytics`) : null;
+  state.preview = Boolean(state.analytics?.suppressed);
   state.selected = null; renderWorkspace();
 }
 function renderWorkspace() {
@@ -100,7 +101,7 @@ function renderWorkspace() {
   signout.classList.remove('hidden');
   const course = state.detail?.course || state.courses[0];
   app.innerHTML = `<div class="workspace-head"><div><p class="eyebrow">${professor ? 'Professor workspace' : 'Student workspace'}</p>
-    <h1>${escapeHtml(course?.title || 'Your courses')}</h1><p class="lead">${professor ? 'Browse what students can see, add your materials, and follow class questions over time.' : 'See your saved learning and the material for your course.'}</p></div>
+    <h1>${escapeHtml(course?.title || 'Your courses')}</h1><p class="lead">${professor ? 'Browse what students can see, add your materials, and follow class questions over time.' : 'See your saved learning and the material for your course.'}</p>${state.account.demoProfessor ? '<p class="notice">Sample professor account. Activity charts are illustrative; course content is real. Uploads are disabled.</p>' : ''}</div>
     ${professor && state.account.role !== 'sample' ? `<label class="course-switch">Course<select id="course-select">${state.courses.map(c => `<option value="${escapeHtml(c.id)}" ${c.id === state.courseId ? 'selected' : ''}>${escapeHtml(c.code)} · ${escapeHtml(c.title)}</option>`).join('')}</select></label>` : ''}</div>
     <nav class="nav-tabs" aria-label="Workspace sections">${(professor ? [['activity', 'Activity over time'], ['content', 'Course content'], ['upload', 'Courses & uploads']] : [['learning', 'My learning'], ['content', 'Course content']])
       .map(([id, label]) => `<button data-tab="${id}" class="${state.tab === id ? 'active' : ''}">${label}</button>`).join('')}</nav>
@@ -197,7 +198,7 @@ function renderContent() {
 }
 function renderUpload() {
   const body = document.querySelector('#workspace-body');
-  if (state.account.role === 'sample') { body.innerHTML = '<section class="panel"><h2>Sample view</h2><p>Create a professor account to add courses and files.</p></section>'; return; }
+  if (state.account.role === 'sample' || state.account.demoProfessor) { body.innerHTML = '<section class="panel"><h2>Sample view</h2><p>This account is read-only. Create your own professor account to add courses and files.</p></section>'; return; }
   body.innerHTML = `<div class="upload-grid"><section class="panel"><h2>Add a course</h2><p class="muted">Each course starts with the stock ME 300 collection. Files you add stay with that course.</p>
     <form id="course-form"><label>Course code<input name="code" placeholder="ME 300" maxlength="30" required></label>
     <label>Course title<input name="title" placeholder="Engineering Thermodynamics" maxlength="120" required></label><button class="button">Create course</button></form></section>

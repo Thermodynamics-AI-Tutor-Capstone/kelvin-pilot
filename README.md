@@ -16,6 +16,8 @@ Professors create an account in the dashboard with a PSU email and password. Eac
 
 The professor dashboard shows 14-day request and reflection timelines and compares topic, misconception, question, and content use between the last seven days and the seven days before. It never exposes student names, emails, or raw questions. Course activity appears only after five distinct students contribute; each daily point and category also requires five distinct students. A clearly labeled synthetic preview is available for walkthroughs before a course has enough activity. The student dashboard shows that student's saved reflections and course content.
 
+When a professor's course has fewer than five contributing students, the dashboard opens with labeled sample charts. These numbers are illustrative browser-side fixtures, never stored as student events or mixed into live analytics. A sample professor account can browse the real stock course content but cannot create courses or upload files.
+
 ## Development
 
 Run `npm ci` and `npm test`. The test suite uses local temporary files. Production uses `DATABASE_URL`. The `agent/` folder contains the course cards and selected teaching skills bundled with the function.

@@ -224,6 +224,7 @@ app.get('/api/courses', demoAccount, async (req, res) => res.json((await courses
   req.demoAccount.role === 'instructor' ? course.professorId === req.demoAccount.id : course.id === req.demoAccount.courseId)));
 app.post('/api/courses', demoAccount, async (req, res) => {
   if (req.demoAccount.role !== 'instructor') return res.status(403).json({ error: 'Professor account required' });
+  if (req.demoAccount.demoProfessor) return res.status(403).json({ error: 'This sample professor account is read-only' });
   try { return res.status(201).json(await createCourse(req.demoAccount.id, req.body || {})); }
   catch (e) { return res.status(400).json({ error: e.message }); }
 });
@@ -252,6 +253,7 @@ app.get('/api/courses/:courseId/files/:fileId', demoAccount, requireCourse, asyn
 });
 app.post('/api/courses/:courseId/files', demoAccount, requireCourse, async (req, res) => {
   if (req.demoAccount.role !== 'instructor') return res.status(403).json({ error: 'Professor account required' });
+  if (req.demoAccount.demoProfessor) return res.status(403).json({ error: 'This sample professor account is read-only' });
   try { return res.status(201).json(await addCourseFile(req.demoAccount.id, req.course.id, req.body?.name, req.body?.mimeType, req.body?.base64)); }
   catch (e) { return res.status(400).json({ error: e.message }); }
 });

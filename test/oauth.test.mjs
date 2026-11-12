@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdtempSync as makeTemp, rmSync } from 'node:fs';
+import { mkdtempSync as makeTemp, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -136,6 +136,15 @@ test('professors own courses and files; students choose and switch professors th
     assert.equal(analytics.body.suppressed, true);
     assert.ok(!JSON.stringify(analytics.body).includes('learner@psu.edu'));
     assert.ok(!JSON.stringify(analytics.body).includes('I practiced entropy'));
+    const accountsPath = join(dir, 'accounts.json');
+    const accounts = JSON.parse(readFileSync(accountsPath, 'utf8'));
+    accounts.find(item => item.id === second.body.account.id).demoProfessor = true;
+    writeFileSync(accountsPath, JSON.stringify(accounts));
+    const demoLogin = await api('/api/professor-session', 'POST', { email: 'teacher2@psu.edu', password: 'long-demo-password-2' });
+    assert.equal(demoLogin.body.account.demoProfessor, true);
+    assert.equal((await api('/api/courses', 'POST', { code: 'ME 302', title: 'Another course' }, demoLogin.body.token)).status, 403);
+    assert.equal((await api(`/api/courses/course-${second.body.account.id}/files`, 'POST',
+      { name: 'Notes.txt', mimeType: 'text/plain', base64: Buffer.from('sample').toString('base64') }, demoLogin.body.token)).status, 403);
     assert.equal((await api('/api/dashboard-data', 'GET', null, firstToken)).status, 404);
   } finally { child.kill(); rmSync(dir, { recursive: true, force: true }); }
 });

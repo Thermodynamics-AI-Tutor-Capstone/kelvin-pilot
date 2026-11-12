@@ -11,7 +11,7 @@ const stock = { id: 'demo-me300', professorId: 'demo-professor', title: 'ME 300 
 const emailPattern = /^[a-z0-9._%+-]+@psu\.edu$/i;
 const hash = value => createHash('sha256').update(value).digest('hex');
 const digest = (password, salt) => scryptSync(password, salt, 64).toString('hex');
-const publicAccount = account => ({ id: account.id, email: account.email || null, name: account.name || null, role: account.role, courseId: account.courseId || null, professorId: account.professorId || null });
+const publicAccount = account => ({ id: account.id, email: account.email || null, name: account.name || null, role: account.role, courseId: account.courseId || null, professorId: account.professorId || null, demoProfessor: Boolean(account.demoProfessor) });
 export const normalizedEmail = email => {
   const value = String(email || '').trim().toLowerCase();
   return emailPattern.test(value) && value.length <= 254 ? value : null;
