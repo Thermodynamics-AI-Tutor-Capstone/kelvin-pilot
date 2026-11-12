@@ -15,7 +15,7 @@ async function ready(url) {
   throw new Error('Server did not start');
 }
 const parse = reply => JSON.parse(reply.content[0].text);
-async function connect(base, email) {
+async function connect(base, email, includeScope = true) {
   const resource = `${base}/mcp`;
   const callback = `${base}/callback`;
   const registered = await fetch(`${base}/register`, { method: 'POST', headers: { 'content-type': 'application/json' },
@@ -27,7 +27,7 @@ async function connect(base, email) {
   const authorize = new URL('/authorize', base);
   for (const [key, value] of Object.entries({ response_type: 'code', client_id: clientId, redirect_uri: callback,
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
-    scope: 'mcp:tools', resource })) authorize.searchParams.set(key, value);
+    ...(includeScope ? { scope: 'mcp:tools' } : {}), resource })) authorize.searchParams.set(key, value);
   const redirect = await fetch(authorize, { redirect: 'manual' });
   assert.equal(redirect.status, 302);
   const requestId = new URL(redirect.headers.get('location'), base).searchParams.get('request');
@@ -92,7 +92,7 @@ test('canonical MCP requires email OAuth, serves course content, and logs safe u
     assert.ok(pacing.content.trim().length > 0);
     const saved = parse(await student.callTool({ name: 'record_learning', arguments: { statement: 'I studied entropy balances today.', consent: true } }));
     assert.deepEqual(saved.topics, ['topic:m7-07-entropy']);
-    const other = await connect(base, 'student-two@psu.edu');
+    const other = await connect(base, 'student-two@psu.edu', false);
     assert.equal(parse(await other.callTool({ name: 'my_learning', arguments: {} })).total, 0);
     assert.equal(parse(await student.callTool({ name: 'my_learning', arguments: {} })).total, 1);
     await other.close(); await student.close();

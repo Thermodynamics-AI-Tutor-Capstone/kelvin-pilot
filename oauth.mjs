@@ -95,7 +95,7 @@ export function createOAuthProvider(resourceUrl, origin, otherResources = []) {
       await mutateState(oauthKey, emptyState(), data => {
         clean(data);
         data.pending[hex(id)] = { clientId: client.client_id, redirectUri: params.redirectUri,
-          state: params.state, codeChallenge: params.codeChallenge, scopes: params.scopes || ['mcp:tools'],
+          state: params.state, codeChallenge: params.codeChallenge, scopes: params.scopes?.length ? params.scopes : ['mcp:tools'],
           resource: params.resource?.href || resource, expiresAt: now() + 10 * 60_000 };
       });
       res.redirect(302, `${origin}/login?request=${encodeURIComponent(id)}`);
