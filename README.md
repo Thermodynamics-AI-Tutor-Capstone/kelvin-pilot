@@ -2,7 +2,7 @@
 
 Penn State ME 300 Engineering Thermodynamics course tools and opt-in learning records.
 
-- Student connector: `https://kelvin-mcp.vercel.app/mcp` (PSU email and course selection through OAuth)
+- Student connector: `https://kelvin-mcp.vercel.app/mcp` (first connection asks for PSU email and professor's course)
 - Older account connector: `https://kelvin-mcp.vercel.app/mcp/account` (still supported)
 - Student and professor dashboard: `https://kelvin-mcp.vercel.app/dashboard`
 
@@ -10,7 +10,7 @@ The MCP, OAuth runtime, and dashboard run in one Vercel project. A Neon Postgres
 
 ## Demo flow
 
-Students enter a `@psu.edu` email address and select a professor's course when connecting Claude or opening the dashboard. Kelvin automatically reuses that email/course pairing for later sessions. Email ownership is **not verified**; this is for test data only. Existing password-protected student accounts remain separate and do not become available through email-only sign-in.
+On their first Claude connection, students enter a `@psu.edu` email and choose a professor's course in Kelvin's MCP sign-in flow. Kelvin remembers the choice and reuses the same student account on later connections. Students can ask Claude to use `list_professors` and `switch_professor` to change their active course; this keeps their account and earlier reflections. The student dashboard asks only for their email and does not offer a professor selector. Email ownership is **not verified**; use test data only. Existing password-protected student accounts remain separate and do not become available through email-only sign-in.
 
 Professors create an account in the dashboard with a PSU email and password. Each professor gets a stock ME 300 course and can add more courses. Uploads are scoped to one course; PDF, TXT, MD, and CSV files up to 2 MB are accepted. Kelvin stores the extracted text, not the original file binary. The MCP makes that text available to students in the course through `list_course_files`, `search_course`, and `get_course_file`.
 

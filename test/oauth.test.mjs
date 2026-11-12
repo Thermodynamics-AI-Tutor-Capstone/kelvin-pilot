@@ -13,7 +13,7 @@ async function ready(url) {
   for (let i = 0; i < 60; i++) { try { if ((await fetch(url)).ok) return; } catch {} await delay(100); }
   throw new Error('Server did not start');
 }
-test('professors own courses and files; students join by email through dashboard and OAuth', async () => {
+test('professors own courses and files; students choose and switch professors through MCP OAuth', async () => {
   const dir = makeTemp(join(tmpdir(), 'kelvin-demo-test-'));
   const port = 35000 + Math.floor(Math.random() * 1000);
   const origin = `http://127.0.0.1:${port}`;
@@ -45,19 +45,8 @@ test('professors own courses and files; students join by email through dashboard
     assert.equal(uploaded.status, 201);
     assert.equal((await api(`/api/courses/${courseId}`, 'GET', null, second.body.token)).status, 404);
     assert.equal((await api(`/api/courses/${courseId}/files/${uploaded.body.id}`, 'GET', null, second.body.token)).status, 404);
-    const student = await api('/api/student-session', 'POST', { email: 'learner@psu.edu', courseId });
-    assert.equal(student.status, 200);
-    const sameStudent = await api('/api/student-session', 'POST', { email: 'LEARNER@PSU.EDU', courseId });
-    assert.equal(sameStudent.body.account.id, student.body.account.id);
-    assert.equal((await api('/api/student-session', 'POST', { email: 'someone@gmail.com', courseId })).status, 400);
-    assert.equal((await api(`/api/courses/${courseId}/analytics`, 'GET', null, student.body.token)).status, 403);
-    const studentData = await api('/api/student', 'GET', null, student.body.token);
-    assert.equal(studentData.body.account.email, 'learner@psu.edu');
-    assert.deepEqual(studentData.body.reflections, []);
-    const content = await api(`/api/courses/${courseId}`, 'GET', null, student.body.token);
-    assert.equal(content.body.files.length, 1);
-    assert.ok(content.body.cards.some(card => card.kind === 'misconception'));
-    assert.ok(content.body.skills.length >= 5);
+    assert.equal((await api('/api/student-session', 'POST', { email: 'learner@psu.edu' })).status, 404);
+    assert.equal((await api('/api/student-session', 'POST', { email: 'someone@gmail.com' })).status, 404);
     const metadata = await fetch(`${origin}/.well-known/oauth-protected-resource/mcp/account`);
     assert.equal(metadata.status, 200);
     assert.equal((await metadata.json()).resource, `${origin}/mcp/account`);
@@ -76,6 +65,11 @@ test('professors own courses and files; students join by email through dashboard
     const loginUrl = new URL(authorize.headers.get('location'), origin);
     const loginPage = await fetch(loginUrl);
     assert.match(await loginPage.text(), /PSU email/);
+    const lookup = await fetch(`${origin}/login`, { method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ action: 'lookup-email', request: loginUrl.searchParams.get('request'), email: 'learner@psu.edu' }) });
+    assert.equal(lookup.status, 200);
+    assert.match(await lookup.text(), /First connection.*Choose your professor/);
     const login = await fetch(`${origin}/login`, { method: 'POST', redirect: 'manual',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ action: 'email', request: loginUrl.searchParams.get('request'), email: 'learner@psu.edu', course: courseId }) });
@@ -86,17 +80,55 @@ test('professors own courses and files; students join by email through dashboard
         redirect_uri: `${origin}/callback`, resource: `${origin}/mcp/account` }) });
     assert.equal(tokens.status, 200);
     const access = (await tokens.json()).access_token;
+    const student = await api('/api/student-session', 'POST', { email: 'learner@psu.edu' });
+    assert.equal(student.status, 200);
+    const sameStudent = await api('/api/student-session', 'POST', { email: 'LEARNER@PSU.EDU' });
+    assert.equal(sameStudent.body.account.id, student.body.account.id);
+    assert.equal((await api(`/api/courses/${courseId}/analytics`, 'GET', null, student.body.token)).status, 403);
+    const studentData = await api('/api/student', 'GET', null, student.body.token);
+    assert.equal(studentData.body.account.email, 'learner@psu.edu');
+    assert.deepEqual(studentData.body.reflections, []);
+    const content = await api(`/api/courses/${courseId}`, 'GET', null, student.body.token);
+    assert.equal(content.body.files.length, 1);
+    assert.ok(content.body.cards.some(card => card.kind === 'misconception'));
+    assert.ok(content.body.skills.length >= 5);
     const client = new Client({ name: 'kelvin-demo-test', version: '1.0.0' });
     await client.connect(new StreamableHTTPClientTransport(new URL(`${origin}/mcp/account`), { requestInit: { headers: { Authorization: `Bearer ${access}` } } }));
     const tools = (await client.listTools()).tools.map(tool => tool.name);
     assert.ok(tools.includes('get_course_file'));
+    assert.ok(tools.includes('switch_professor'));
     const file = await client.callTool({ name: 'get_course_file', arguments: { id: uploaded.body.id } });
     assert.match(file.content[0].text, /Office hours are on Tuesday/);
     const account = await client.callTool({ name: 'my_account', arguments: {} });
     assert.equal(JSON.parse(account.content[0].text).id, student.body.account.id);
     const saved = await client.callTool({ name: 'record_learning', arguments: { statement: 'I practiced entropy balances today.', consent: true } });
     assert.equal(JSON.parse(saved.content[0].text).saved, true);
+    const available = await client.callTool({ name: 'list_professors', arguments: {} });
+    assert.ok(JSON.parse(available.content[0].text).some(item => item.id === second.body.account.id));
+    const switched = await client.callTool({ name: 'switch_professor', arguments: { professor_id: second.body.account.id } });
+    assert.equal(JSON.parse(switched.content[0].text).course.id, `course-${second.body.account.id}`);
+    const afterSwitch = await client.callTool({ name: 'my_account', arguments: {} });
+    assert.equal(JSON.parse(afterSwitch.content[0].text).courseId, `course-${second.body.account.id}`);
+    assert.equal((await api('/api/student', 'GET', null, student.body.token)).body.course.id, `course-${second.body.account.id}`);
+    const hiddenFile = await client.callTool({ name: 'get_course_file', arguments: { id: uploaded.body.id } });
+    assert.equal(hiddenFile.isError, true);
+    const back = await client.callTool({ name: 'switch_professor', arguments: { professor_id: first.body.account.id, course_id: courseId } });
+    assert.equal(JSON.parse(back.content[0].text).course.id, courseId);
     await client.close();
+    const reconnect = await fetch(authUrl, { redirect: 'manual' });
+    assert.equal(reconnect.status, 302);
+    const reconnectRequest = new URL(reconnect.headers.get('location'), origin).searchParams.get('request');
+    const remembered = await fetch(`${origin}/login`, { method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ action: 'lookup-email', request: reconnectRequest, email: 'learner@psu.edu' }) });
+    const rememberedPage = await remembered.text();
+    assert.match(rememberedPage, /Your current course.*Applied Thermodynamics/);
+    assert.doesNotMatch(rememberedPage, /<select name="course"/);
+    const resume = await fetch(`${origin}/login`, { method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ action: 'email', request: reconnectRequest, email: 'learner@psu.edu' }) });
+    assert.equal(resume.status, 302);
+    assert.equal((await api('/api/student-session', 'POST', { email: 'learner@psu.edu' })).body.account.id, student.body.account.id);
     const own = await api('/api/student', 'GET', null, student.body.token);
     assert.equal(own.body.reflections.length, 1);
     const analytics = await api(`/api/courses/${courseId}/analytics`, 'GET', null, firstToken);

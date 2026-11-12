@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { InvalidGrantError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { mutateState, readState } from './persistence.mjs';
-import { enrollStudent, professors } from './demo.mjs';
+import { enrollStudent, professors, studentForEmail, normalizedEmail, courseById } from './demo.mjs';
 
 const accountsKey = 'accounts.json';
 const oauthKey = 'oauth-state.json';
@@ -146,16 +146,24 @@ export function createOAuthProvider(resourceUrl, origin, otherResources = []) {
   };
 }
 const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]);
-export async function loginPage(requestId, message = '') {
+export async function loginPage(requestId, message = '', emailInput = '') {
   const request = typeof requestId === 'string' ? requestId : '';
   const pending = (await state()).pending[hex(request)];
   if (!pending || pending.expiresAt < now()) return null;
   const dashboard = pending.resource.endsWith('/dashboard-data');
-  const title = dashboard ? 'Sign in to the Kelvin instructor dashboard' : 'Connect Kelvin to Claude';
-  const intro = dashboard ? 'Use your instructor account to see aggregate course activity.' : 'Enter your PSU email and choose your professor’s course. Kelvin will remember this pairing when you reconnect.';
-  const options = (await professors()).flatMap(professor => professor.courses.map(course =>
+  const email = normalizedEmail(emailInput);
+  const existing = email ? await studentForEmail(email) : null;
+  const existingCourse = existing ? await courseById(existing.courseId) : null;
+  const availableProfessors = await professors();
+  const existingProfessor = existing ? availableProfessors.find(professor => professor.id === existing.professorId) : null;
+  const options = availableProfessors.flatMap(professor => professor.courses.map(course =>
     `<option value="${escape(course.id)}">${escape(professor.name)} · ${escape(course.code)}: ${escape(course.title)}</option>`)).join('');
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect Kelvin</title><style>body{font:16px system-ui;max-width:540px;margin:7vh auto;padding:24px;color:#1d2730}h1{font-size:1.7em}form{border:1px solid #ccd5dc;border-radius:12px;padding:20px;margin:18px 0}label{display:block;margin:12px 0}input,select{display:block;box-sizing:border-box;width:100%;padding:10px;margin-top:5px}button{background:#164a71;color:white;border:0;border-radius:7px;padding:11px 18px;cursor:pointer}.error{color:#a12626}.note{color:#59636b;font-size:.9em}</style><h1>${title}</h1><p>${intro}</p>${message ? `<p class="error">${escape(message)}</p>` : ''}${dashboard ? '' : `<form method="post" action="/login"><input type="hidden" name="request" value="${escape(request)}"><label>PSU email<input name="email" type="email" autocomplete="email" placeholder="you@psu.edu" required></label><label>Professor and course<select name="course" required>${options}</select></label><button name="action" value="email">Connect to Kelvin</button></form><p class="note">Demo sign-in: email ownership is not verified. Use only test data. Reflections are saved only when you explicitly ask Claude to save them.</p>`}<form method="post" action="/login"><h2>${dashboard ? 'Instructor sign-in' : 'Existing password account'}</h2><input type="hidden" name="request" value="${escape(request)}"><label>Account ID<input name="account" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button name="action" value="sign-in">Sign in and connect</button></form></html>`;
+  const hidden = `<input type="hidden" name="request" value="${escape(request)}">`;
+  const studentForm = !email ? `<form method="post" action="/login">${hidden}<label>PSU email<input name="email" type="email" autocomplete="email" placeholder="you@psu.edu" required></label><button name="action" value="lookup-email">Continue</button></form>`
+    : existing ? `<form method="post" action="/login">${hidden}<input type="hidden" name="email" value="${escape(email)}"><p><strong>Your current course:</strong> ${escape(existingProfessor?.name || 'Your professor')} · ${escape(existingCourse?.code || '')} ${escape(existingCourse?.title || 'Your course')}</p><p>Kelvin will keep this choice. To change it later, ask Claude to list professors and switch your professor.</p><button name="action" value="email">Connect to Kelvin</button></form>`
+    : `<form method="post" action="/login">${hidden}<input type="hidden" name="email" value="${escape(email)}"><p>First connection for ${escape(email)}. Choose your professor's course:</p><label>Professor and course<select name="course" required>${options}</select></label><button name="action" value="email">Connect to Kelvin</button></form>`;
+  const legacyForm = `<form method="post" action="/login"><h2>${dashboard ? 'Instructor sign-in' : 'Existing password account'}</h2>${hidden}<label>Account ID<input name="account" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button name="action" value="sign-in">Sign in and connect</button></form>`;
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect Kelvin</title><style>body{font:16px system-ui;max-width:540px;margin:7vh auto;padding:24px;color:#1d2730}h1{font-size:1.7em}form{border:1px solid #ccd5dc;border-radius:12px;padding:20px;margin:18px 0}label{display:block;margin:12px 0}input,select{display:block;box-sizing:border-box;width:100%;padding:10px;margin-top:5px}button{background:#164a71;color:white;border:0;border-radius:7px;padding:11px 18px;cursor:pointer}.error{color:#a12626}.note{color:#59636b;font-size:.9em}</style><h1>${dashboard ? 'Sign in to the Kelvin instructor dashboard' : 'Connect Kelvin to Claude'}</h1><p>${dashboard ? 'Use your instructor account to see aggregate course activity.' : 'Enter your PSU email. If this is your first connection, you will choose a professor and course.'}</p>${message ? `<p class="error">${escape(message)}</p>` : ''}${dashboard ? '' : studentForm}${!dashboard ? '<p class="note">Demo sign-in does not verify email ownership. Use test data only. Kelvin saves a reflection only when you ask it to.</p>' : ''}${legacyForm}</html>`;
 }
 export async function completeLogin(input) {
   const requestId = String(input.request || ''), pending = (await state()).pending[hex(requestId)];

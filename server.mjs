@@ -13,7 +13,7 @@ import { addEvent, allEvents } from './store.mjs';
 import { classify } from './classify.mjs';
 import { writeRequestLog } from './request-log.mjs';
 import { accountById, completeLogin, createOAuthProvider, loginPage } from './oauth.mjs';
-import { professors, enrollStudent, registerProfessor, signInProfessor, makeSession, sessionAccount, revokeSession,
+import { professors, studentForEmail, switchStudentProfessor, registerProfessor, signInProfessor, makeSession, sessionAccount, revokeSession,
   courses, courseById, createCourse, courseFiles, fileMetadata, addCourseFile, recordUsage, studentSummary, courseAnalytics, stockCards } from './demo.mjs';
 
 const { cards, skills } = loadContent();
@@ -39,8 +39,15 @@ async function makeMcp(user) {
   });
   const publicSecurity = user.role === 'anonymous' ? { _meta: { securitySchemes: [{ type: 'noauth' }] } } : {};
   if (user.role !== 'anonymous') mcp.registerTool('my_account', { description: 'Show the Kelvin email, course, and role attached to this connector.' },
-    async () => { const account = await accountById(user.id); return result({ id: user.id, name: user.name || null,
-      email: account?.email || null, role: user.role, courseId: user.courseId || null }); });
+    async () => {
+      const account = await accountById(user.id);
+      const active = account?.courseId ? await courseById(account.courseId) : null;
+      const professor = active ? (await professors()).find(item => item.id === active.professorId) : null;
+      return result({ id: user.id, name: user.name || null, email: account?.email || null, role: user.role,
+        course: active ? { id: active.id, code: active.code, title: active.title } : null,
+        professor: professor ? { id: professor.id, name: professor.name } : null,
+        courseId: account?.courseId || null });
+    });
   mcp.registerTool('course_map', { title: 'ME 300 thermodynamics course map', description: 'For thermodynamics questions, start here once per conversation. This is real Penn State ME 300 Engineering Thermodynamics course content: systems, properties, phase change, first and second laws, entropy, control volumes, and cycles. Returns the course map so you can choose the right topic card. Course logistics are from Summer 2023; current dates and policies come from the student’s Canvas.', ...publicSecurity }, () =>
     result({ subject: course?.title || 'Penn State ME 300 Engineering Thermodynamics', courseId: course?.id,
       sourceMaterial: 'actual Penn State course files', use: 'For a thermodynamics topic, search_course for matching cards, then get_card before explaining or tutoring. Check current Canvas for dates and policies.', provenance, course: metadata(cards.get('course:me300')),
@@ -77,6 +84,16 @@ async function makeMcp(user) {
       });
   }
   if (user.role === 'student') {
+    if (user.demoEmailOnly) {
+      mcp.registerTool('list_professors', { description: 'List available professors and their courses. Use this when the student asks to change which professor or course Kelvin follows.' },
+        async () => result(await professors()));
+      mcp.registerTool('switch_professor', { description: 'Change this student’s active professor and course. Only call when the student explicitly asks to switch. Use list_professors first; provide course_id when the professor has multiple courses. The choice is remembered for future MCP and dashboard sessions.',
+        inputSchema: { professor_id: z.string().max(100), course_id: z.string().max(100).optional() } },
+      async ({ professor_id, course_id }) => {
+        try { return result(await switchStudentProfessor(user.id, professor_id, course_id)); }
+        catch (e) { return error(e.message); }
+      });
+    }
     mcp.registerTool('record_learning', { description: 'Save a short learning reflection and classify its topics with DeepSeek. Only call after the student explicitly asks to save what they worked on. Misconception labels are tentative, not diagnoses.',
       inputSchema: { statement: z.string().min(10).max(1000), consent: z.literal(true) } }, async ({ statement }) => {
         try {
@@ -153,7 +170,7 @@ app.use((req, res, next) => {
       accountId: req.auth?.extra?.accountId || null,
       rpcMethod: typeof body?.method === 'string' ? body.method : null,
       tool: body?.method === 'tools/call' && typeof body.params?.name === 'string' ? body.params.name : null,
-      loginAction: req.path === '/login' && ['create', 'sign-in'].includes(body?.action) ? body.action : null });
+      loginAction: req.path === '/login' && ['create', 'sign-in', 'lookup-email', 'email'].includes(body?.action) ? body.action : null });
   };
   res.once('finish', () => log('finished'));
   res.once('close', () => log('closed'));
@@ -179,8 +196,9 @@ app.get('/api/public-content/skills/:id', (req, res) => {
 });
 const demoRateLimit = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false });
 app.post('/api/student-session', demoRateLimit, async (req, res) => {
-  try { return res.json(await makeSession(await enrollStudent(req.body?.email, req.body?.courseId))); }
-  catch (e) { return res.status(400).json({ error: e.message }); }
+  const account = await studentForEmail(req.body?.email);
+  return account ? res.json(await makeSession(account))
+    : res.status(404).json({ error: 'Connect Kelvin in Claude first to choose your professor and course.' });
 });
 app.post('/api/professor-register', demoRateLimit, async (req, res) => {
   try { return res.json(await makeSession(await registerProfessor(req.body || {}))); }
@@ -250,10 +268,15 @@ app.get('/login', async (req, res) => {
   return page ? res.type('html').send(page) : res.status(400).send('This sign-in request expired. Start again in Claude.');
 });
 app.post('/login', express.urlencoded({ extended: false, limit: '8kb' }), rateLimit({ windowMs: 15 * 60_000, limit: 10 }), async (req, res) => {
+  if (req.body.action === 'lookup-email') {
+    const page = await loginPage(req.body.request, '', req.body.email);
+    res.set('Cache-Control', 'no-store');
+    return page ? res.type('html').send(page) : res.status(400).send('This sign-in request expired. Start again in Claude.');
+  }
   const outcome = await completeLogin(req.body);
   res.set('Cache-Control', 'no-store');
   if (outcome.redirect) return res.redirect(302, outcome.redirect);
-  const page = await loginPage(req.body.request, outcome.error);
+  const page = await loginPage(req.body.request, outcome.error, req.body.email);
   return page ? res.type('html').send(page) : res.status(400).send(outcome.error);
 });
 app.use('/dashboard-data', (req, res, next) => {
@@ -276,7 +299,8 @@ app.all('/mcp/account', requireBearerAuth({ verifier: oauth, requiredScopes: ['m
     const account = await accountById(req.auth?.extra?.accountId);
     if (!account) return res.status(401).json({ error: 'Account is unavailable' });
     return handleMcp(req, res, { id: account.id, name: account.name, role: account.role, account: true,
-      courseId: account.role === 'instructor' ? `course-${account.id}` : account.courseId || null });
+      courseId: account.role === 'instructor' ? `course-${account.id}` : account.courseId || null,
+      demoEmailOnly: Boolean(account.demoEmailOnly) });
   });
 app.all('/mcp', requireBearerAuth({ verifier: oauth, requiredScopes: ['mcp:tools'],
   resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(resourceUrl), expectedResource: resourceUrl }), async (req, res) => {
@@ -284,7 +308,8 @@ app.all('/mcp', requireBearerAuth({ verifier: oauth, requiredScopes: ['mcp:tools
   const account = await accountById(req.auth?.extra?.accountId);
   if (!account) return res.status(401).json({ error: 'Account is unavailable' });
   return handleMcp(req, res, { id: account.id, name: account.name, role: account.role, account: true,
-    courseId: account.role === 'instructor' ? `course-${account.id}` : account.courseId || null });
+    courseId: account.role === 'instructor' ? `course-${account.id}` : account.courseId || null,
+    demoEmailOnly: Boolean(account.demoEmailOnly) });
 });
 export default app;
 if (process.env.VERCEL !== '1') {

@@ -28,18 +28,41 @@ export async function professors() {
   return [{ id: stock.professorId, name: 'Kelvin demo course', courses: [stock] }, ...accounts.filter(a => a.role === 'instructor' && !a.disabled)
     .map(a => ({ id: a.id, name: a.name, courses: all.filter(c => c.professorId === a.id) }))];
 }
+export async function studentForEmail(emailInput) {
+  const email = normalizedEmail(emailInput);
+  if (!email) return null;
+  const matches = (await readState(accountsKey, [])).filter(a => a.role === 'student' && a.demoEmailOnly && a.email === email && !a.disabled);
+  matches.sort((a, b) => (b.courseChangedAt || b.createdAt).localeCompare(a.courseChangedAt || a.createdAt));
+  return matches[0] ? publicAccount(matches[0]) : null;
+}
 export async function enrollStudent(emailInput, courseId) {
-  const email = normalizedEmail(emailInput), course = await courseById(courseId);
-  if (!email || !course) throw new Error('Enter a PSU email and choose a course');
+  const email = normalizedEmail(emailInput), course = courseId ? await courseById(courseId) : null;
+  if (!email) throw new Error('Enter a PSU email');
   return mutateState(accountsKey, [], data => {
-    let account = data.find(a => a.role === 'student' && a.email === email && a.courseId === course.id && !a.disabled);
+    const matches = data.filter(a => a.role === 'student' && a.demoEmailOnly && a.email === email && !a.disabled)
+      .sort((a, b) => (b.courseChangedAt || b.createdAt).localeCompare(a.courseChangedAt || a.createdAt));
+    let account = matches[0];
     if (!account) {
+      if (!course) throw new Error('Choose a professor and course');
       account = { id: `student-${randomBytes(12).toString('hex')}`, role: 'student', email, courseId: course.id,
         professorId: course.professorId, name: email.split('@')[0], createdAt: new Date().toISOString(),
         disabled: false, demoEmailOnly: true, shareWithInstructor: false };
       data.push(account);
     }
     return publicAccount(account);
+  });
+}
+export async function switchStudentProfessor(studentId, professorId, courseId) {
+  const available = (await courses()).filter(course => course.professorId === professorId);
+  const course = courseId ? available.find(item => item.id === courseId) : available.length === 1 ? available[0] : null;
+  if (!course) throw new Error('Choose a valid professor and course. Use list_professors to see the options.');
+  return mutateState(accountsKey, [], data => {
+    const student = data.find(account => account.id === studentId && account.role === 'student' && account.demoEmailOnly && !account.disabled);
+    if (!student) throw new Error('This account cannot switch professors');
+    student.courseId = course.id;
+    student.professorId = course.professorId;
+    student.courseChangedAt = new Date().toISOString();
+    return { account: publicAccount(student), course };
   });
 }
 export async function registerProfessor({ email: input, name, password }) {
@@ -124,8 +147,12 @@ export async function addCourseFile(professorId, courseId, nameInput, mimeType, 
 }
 export async function recordUsage(event) { return addStoredUsage(event); }
 export async function studentSummary(account) {
-  const reflections = (await storedEvents()).filter(e => e.studentId === account.id && e.courseId === account.courseId);
-  return { account, course: await courseById(account.courseId), reflections: reflections.slice(-30).reverse() };
+  const allCourses = await courses();
+  const reflections = (await storedEvents()).filter(e => e.studentId === account.id)
+    .map(event => ({ ...event, courseTitle: allCourses.find(course => course.id === event.courseId)?.title || 'Earlier course' }));
+  return { account, course: await courseById(account.courseId),
+    professor: (await professors()).find(item => item.id === account.professorId)?.name || null,
+    reflections: reflections.slice(-30).reverse() };
 }
 export async function courseAnalytics(courseId, minimumStudents = 5) {
   const course = await courseById(courseId);

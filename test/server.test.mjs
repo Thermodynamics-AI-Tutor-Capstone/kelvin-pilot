@@ -31,6 +31,10 @@ async function connect(base, email, includeScope = true) {
   const redirect = await fetch(authorize, { redirect: 'manual' });
   assert.equal(redirect.status, 302);
   const requestId = new URL(redirect.headers.get('location'), base).searchParams.get('request');
+  const lookup = await fetch(`${base}/login`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ request: requestId, action: 'lookup-email', email }) });
+  assert.equal(lookup.status, 200);
+  assert.match(await lookup.text(), /Choose your professor/);
   const login = await fetch(`${base}/login`, { method: 'POST', redirect: 'manual',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ request: requestId, action: 'email', email, course: 'demo-me300' }) });

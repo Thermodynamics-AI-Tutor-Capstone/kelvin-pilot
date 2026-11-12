@@ -37,14 +37,11 @@ signout.addEventListener('click', async () => {
   await welcome();
 });
 async function welcome() {
-  const professors = await api('/api/professors', { auth: false });
-  const options = professors.flatMap(professor => professor.courses.map(course =>
-    `<option value="${escapeHtml(course.id)}">${escapeHtml(professor.name)} · ${escapeHtml(course.code)}: ${escapeHtml(course.title)}</option>`)).join('');
   signout.classList.add('hidden'); identity.textContent = '';
   app.innerHTML = `<section class="intro"><p class="eyebrow">ME 300 · Thermodynamics</p><h1>Your course, in one place.</h1><p class="lead">Students can check what Kelvin saved. Professors can review course materials and see how questions change over time.</p></section>
-    <div class="entry-grid"><section class="panel entry-card"><span class="entry-icon">↗</span><h2>I'm a student</h2><p>Use your PSU email and pick your professor's course. No password for this demo.</p>
+    <div class="entry-grid"><section class="panel entry-card"><span class="entry-icon">↗</span><h2>I'm a student</h2><p>Connect Kelvin in Claude first to choose your professor. Then use your PSU email to see what Kelvin has saved.</p>
       <form id="student-form"><label>PSU email<input type="email" name="email" placeholder="you@psu.edu" autocomplete="email" required></label>
-      <label>Professor and course<select name="courseId" required>${options}</select></label><button class="button full">Open my workspace</button></form></section>
+      <button class="button full">Open my workspace</button></form></section>
     <section class="panel entry-card"><span class="entry-icon">◫</span><h2>I'm a professor</h2><p>Create an account to browse the stock ME 300 materials, add courses and upload your own files.</p>
       <div class="tab-row"><button class="mini-tab active" data-auth="signin">Sign in</button><button class="mini-tab" data-auth="register">Create account</button></div>
       <form id="professor-form"><div id="name-row" class="hidden"><label>Your name<input name="name" autocomplete="name"></label></div>
@@ -160,12 +157,15 @@ function renderActivity() {
 function renderLearning() {
   const data = state.student;
   const body = document.querySelector('#workspace-body');
-  body.innerHTML = `<div class="section-title"><div><h2>What Kelvin has saved for you</h2><p class="muted">${escapeHtml(data?.account.email || '')} · ${escapeHtml(data?.course?.code || '')}</p></div></div>
+  body.innerHTML = `<div class="section-title"><div><h2>What Kelvin has saved for you</h2><p class="muted">${escapeHtml(data?.account.email || '')} · ${escapeHtml(data?.professor || '')} · ${escapeHtml(data?.course?.code || '')}</p></div><button id="refresh-student" class="button secondary">Refresh</button></div>
     <section class="panel"><h2>Saved learning</h2>${data?.reflections?.length ? `<div class="record-list">${data.reflections.map(item =>
-    `<article class="record"><time>${escapeHtml(new Date(item.at).toLocaleDateString())}</time><p>${escapeHtml(item.statement)}</p><small>Topics: ${escapeHtml((item.topics || []).join(', ') || 'Classification pending')}</small></article>`).join('')}</div>` :
+    `<article class="record"><time>${escapeHtml(new Date(item.at).toLocaleDateString())} · ${escapeHtml(item.courseTitle || '')}</time><p>${escapeHtml(item.statement)}</p><small>Topics: ${escapeHtml((item.topics || []).join(', ') || 'Classification pending')}</small></article>`).join('')}</div>` :
     '<p class="muted">Nothing saved yet. In Claude, ask Kelvin to save a short note about what you worked on. It will appear here.</p>'}</section>
-    <section class="panel"><h2>Your course connection</h2><p>The course you chose is linked to this email. Your professor sees only grouped activity, not your name or individual questions.</p>
+    <section class="panel"><h2>Your course connection</h2><p>Your current course is ${escapeHtml(data?.course?.title || 'not available')} with ${escapeHtml(data?.professor || 'your professor')}. To change professors, ask Claude to use Kelvin's <strong>list_professors</strong> and <strong>switch_professor</strong> tools, then refresh this page.</p><p>Your professor sees only grouped activity, not your name or individual questions.</p>
     <p class="muted">This is an email-only demo. Anyone who enters your email can open this view, so please use test data.</p></section>`;
+  document.querySelector('#refresh-student').addEventListener('click', async () => {
+    try { state.account = await api('/api/me'); await loadWorkspace(); } catch (e) { showError(e.message); }
+  });
 }
 async function openItem(kind, id) {
   const course = encodeURIComponent(state.courseId), item = encodeURIComponent(id);
