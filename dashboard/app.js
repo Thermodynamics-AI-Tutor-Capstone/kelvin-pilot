@@ -298,7 +298,7 @@ async function renderManage() {
     const revisions = await api(`/api/courses/${encodeURIComponent(state.courseId)}/revisions`);
     body.querySelector('#revision-list').innerHTML = revisions.length ? revisions.slice(-20).reverse().map(r =>
       `<div class="record"><strong>v${r.version} · ${escapeHtml(r.itemId)}</strong><p>${escapeHtml(r.reason || 'Edited')}</p><small>${escapeHtml(new Date(r.at).toLocaleString())}</small>
-      ${readOnly ? '' : `<button class="button secondary" data-restore="${escapeHtml(r.id)}" data-item="${escapeHtml(r.itemId)}">Restore this version</button>`}</div>`).join('') : '<p>No course edits yet.</p>';
+      ${readOnly || !['card','skill'].includes(r.kind) ? '' : `<button class="button secondary" data-restore="${escapeHtml(r.id)}" data-item="${escapeHtml(r.itemId)}">Restore this version</button>`}</div>`).join('') : '<p>No course edits yet.</p>';
     body.querySelectorAll('[data-restore]').forEach(button => button.addEventListener('click', async () => {
       try { await api(`/api/courses/${encodeURIComponent(state.courseId)}/revisions/restore`, { method: 'POST',
         body: { itemId: button.dataset.item, revisionId: button.dataset.restore, expectedVersion: state.detail.version } }); await loadCourse(); }

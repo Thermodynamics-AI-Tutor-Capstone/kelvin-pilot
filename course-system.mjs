@@ -65,6 +65,7 @@ export async function restoreCourseVersion(courseId, account, course, itemId, re
     const revisions = data[courseId] ||= [];
     const prior = revisions.find(r => r.id === revisionId && r.itemId === itemId);
     if (!prior) throw new Error('Revision unavailable');
+    if (!['card','skill'].includes(prior.kind)) throw new Error('Only card and skill revisions can be restored here');
     const version = revisions.at(-1)?.version || 0;
     if (Number(expectedVersion) !== version) throw new Error('Course changed. Refresh before restoring.');
     const entry = { ...prior, id: randomUUID(), version: version + 1, at: new Date().toISOString(), actorId: account.id,
