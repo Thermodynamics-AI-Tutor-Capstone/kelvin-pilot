@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { mutateState, readState, addStoredUsage, storedUsage, storedEvents } from './persistence.mjs';
 import { loadContent, metadata } from './content.mjs';
 import lectures from './oconnor-lectures.json' with { type: 'json' };
+import documents from './oconnor-documents.json' with { type: 'json' };
 
 const accountsKey = 'accounts.json';
 const coursesKey = 'courses.json';
@@ -117,7 +118,7 @@ export async function revokeSession(token) {
 }
 export async function courseFiles(courseId) {
   const stored = (await readState(filesKey, [])).filter(f => f.courseId === courseId && !f.archived);
-  return courseId === oconnor.id ? [...lectures.map(f => ({ ...f, courseId, professorId: oconnor.professorId,
+  return courseId === oconnor.id ? [...[...lectures, ...documents].map(f => ({ ...f, courseId, professorId: oconnor.professorId,
     size: Buffer.byteLength(f.text), createdAt: '2023-08-11T00:00:00.000Z', version: 1, sourceTerm: 'Summer 2023' })), ...stored] : stored;
 }
 export async function courseFileVersions(courseId, name) { return (await readState(filesKey, [])).filter(f => f.courseId === courseId && f.name === name); }

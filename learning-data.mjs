@@ -54,17 +54,30 @@ export async function dreamCourse(courseId, cards) {
   }
   const trends = [...counts.values()].filter(x => x.students.size >= 5).map(x => ({ id: x.id, count: x.count,
     studentCount: x.students.size, evidenceEventIds: x.evidenceEventIds.slice(-30) })).sort((a,b) => b.count-a.count);
+  const topicCounts = new Map();
+  for (const profile of Object.values(studentResults)) for (const id of profile.topics) {
+    const entry = topicCounts.get(id) || { id, studentCount: 0, evidenceEventIds: [], importIds: [] };
+    entry.studentCount++; entry.evidenceEventIds.push(...profile.evidenceEventIds);
+    entry.importIds.push(...profile.importIds); topicCounts.set(id, entry);
+  }
+  const questionTopics = [...topicCounts.values()].filter(x => x.studentCount >= 5)
+    .map(x => ({ ...x, evidenceEventIds: x.evidenceEventIds.slice(-30), importIds: x.importIds.slice(-30) }))
+    .sort((a,b) => b.studentCount-a.studentCount);
   const result = { id: randomUUID(), generatedAt: new Date().toISOString(), courseId, sourceCount: calls.length,
-    studentCount: students.length, trends, conclusion: trends.length ? `The most opened course item is ${trends[0].id}, across ${trends[0].studentCount} students.` :
+    studentCount: students.length, trends, questionTopics, conclusion: questionTopics.length ?
+      `${questionTopics[0].studentCount} students asked questions classified under ${questionTopics[0].id}.` : trends.length ?
+      `The most opened course item is ${trends[0].id}, across ${trends[0].studentCount} students.` :
       'There is not enough distinct-student evidence yet for a class trend.', conclusionType: 'deterministic',
-    evidenceEventIds: trends.flatMap(t => t.evidenceEventIds).slice(-60) };
-  if (trends.length && process.env.DEEPSEEK_API_KEY) try {
+    evidenceEventIds: [...trends.flatMap(t => t.evidenceEventIds), ...questionTopics.flatMap(t => t.evidenceEventIds)].slice(-60),
+    evidenceImportIds: questionTopics.flatMap(t => t.importIds).slice(-60) };
+  if ((trends.length || questionTopics.length) && process.env.DEEPSEEK_API_KEY) try {
     const base = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
     const url = base.endsWith('/chat/completions') ? base : `${base}/chat/completions`;
     const response = await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`, 'content-type': 'application/json' },
       signal: AbortSignal.timeout(12000), body: JSON.stringify({ model: process.env.DEEPSEEK_MODEL || 'deepseek-flash', temperature: 0,
         messages: [{ role: 'system', content: 'Given only aggregate course usage counts, suggest one concrete teaching action in one sentence. Do not infer student ability or identity. Do not claim a misconception unless evidence explicitly shows one.' },
-          { role: 'user', content: JSON.stringify({ trends: trends.slice(0, 8).map(({ evidenceEventIds, ...item }) => item) }) }] }) });
+          { role: 'user', content: JSON.stringify({ trends: trends.slice(0, 8).map(({ evidenceEventIds, ...item }) => item),
+            questionTopics: questionTopics.slice(0, 8).map(({ evidenceEventIds, importIds, ...item }) => item) }) }] }) });
     if (response.ok) {
       const json = await response.json();
       result.suggestion = String(json.choices?.[0]?.message?.content || '').slice(0, 500);

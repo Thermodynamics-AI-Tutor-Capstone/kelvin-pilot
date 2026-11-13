@@ -161,6 +161,9 @@ function renderActivity() {
     ${real?.insight?.trends?.length ? `<details><summary>Evidence behind this conclusion</summary><ul class="simple-list">${real.insight.trends.slice(0,8).map(item =>
       `<li>${escapeHtml((state.detail?.cards || []).find(card => card.id === item.id)?.title || item.id)} · ${item.count} opens by ${item.studentCount} students</li>`).join('')}</ul>
       <p class="muted">Evidence event IDs: ${escapeHtml(real.insight.evidenceEventIds.slice(0,12).join(', '))}</p></details>` : ''}
+    ${real?.insight?.questionTopics?.length ? `<details><summary>Question topics from student activity</summary><ul class="simple-list">${real.insight.questionTopics.slice(0,8).map(item =>
+      `<li>${escapeHtml((state.detail?.cards || []).find(card => card.id === item.id)?.title || item.id)} · ${item.studentCount} students</li>`).join('')}</ul>
+      <p class="muted">Topic labels are model-generated. Evidence includes MCP calls and student-imported prompts.</p></details>` : ''}
     ${state.account.role !== 'sample' ? '<button class="button secondary" id="run-dream">Refresh synthesis</button>' : ''}</section>`}`;
   document.querySelector('#preview-toggle')?.addEventListener('click', () => { state.preview = !state.preview; renderActivity(); });
   document.querySelector('#run-dream')?.addEventListener('click', async () => {
@@ -316,7 +319,7 @@ function renderUpload() {
     <section class="panel"><h2>Upload to ${escapeHtml(state.detail.course.code)}</h2><p class="muted">PDF, TXT, MD, or CSV · up to 2 MB. Kelvin reads the text so students can find it through the MCP.</p>
     <form id="upload-form"><label>Choose a file<input name="file" type="file" accept=".pdf,.txt,.md,.csv" required></label><button class="button">Upload file</button></form>
     <p id="upload-message" class="error" role="status"></p></section></div>
-    <section class="panel"><h2>Files in this course</h2>${state.detail.files.length ? `<ul class="simple-list">${state.detail.files.map(file => `<li>${escapeHtml(file.name)} <small>${escapeHtml(new Date(file.createdAt).toLocaleDateString())}</small></li>`).join('')}</ul>` : '<p class="muted">No files uploaded yet.</p>'}</section>`;
+    <section class="panel"><h2>Files in this course</h2>${state.detail.files.length ? `<ul class="simple-list">${state.detail.files.map(file => `<li>${escapeHtml(file.name)} <small>v${escapeHtml(file.version)} · ${escapeHtml(new Date(file.createdAt).toLocaleDateString())}</small></li>`).join('')}</ul>` : '<p class="muted">No files uploaded yet.</p>'}</section>`;
   document.querySelector('#course-form').addEventListener('submit', async event => {
     event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
     try { const course = await api('/api/courses', { method: 'POST', body: values }); state.courseId = course.id; await loadWorkspace(); }
