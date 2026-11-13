@@ -2,12 +2,15 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypt
 import { existsSync } from 'node:fs';
 import { mutateState, readState, addStoredUsage, storedUsage, storedEvents } from './persistence.mjs';
 import { loadContent, metadata } from './content.mjs';
+import lectures from './oconnor-lectures.json' with { type: 'json' };
 
 const accountsKey = 'accounts.json';
 const coursesKey = 'courses.json';
 const filesKey = 'course-files.json';
 const sessionsKey = 'dashboard-sessions.json';
 const stock = { id: 'demo-me300', professorId: 'demo-professor', title: 'ME 300 Engineering Thermodynamics', code: 'ME 300', stock: true };
+const oconnor = { id: 'oconnor-me300-su23', professorId: 'demo-oconnor', title: 'ME 300 · Dr. Jacqueline O’Connor · Summer 2023',
+  code: 'ME 300', stock: true, sourceCourse: true, sourceTerm: 'Summer 2023' };
 const emailPattern = /^[a-z0-9._%+-]+@psu\.edu$/i;
 const hash = value => createHash('sha256').update(value).digest('hex');
 const digest = (password, salt) => scryptSync(password, salt, 64).toString('hex');
@@ -19,13 +22,15 @@ export const normalizedEmail = email => {
 const defaultCourse = account => ({ id: `course-${account.id}`, professorId: account.id, title: account.courseTitle || 'ME 300 Engineering Thermodynamics', code: account.courseCode || 'ME 300', stock: true });
 export async function courses() {
   const accounts = await readState(accountsKey, []);
-  return [stock, ...accounts.filter(a => a.role === 'instructor' && !a.disabled).map(defaultCourse), ...await readState(coursesKey, [])];
+  return [stock, oconnor, ...accounts.filter(a => ['instructor','operator'].includes(a.role) && !a.disabled).map(defaultCourse), ...await readState(coursesKey, [])];
 }
 export async function courseById(id) { return (await courses()).find(course => course.id === id) || null; }
 export async function professors() {
   const all = await courses();
   const accounts = await readState(accountsKey, []);
-  return [{ id: stock.professorId, name: 'Kelvin demo course', courses: [stock] }, ...accounts.filter(a => a.role === 'instructor' && !a.disabled)
+  return [{ id: stock.professorId, name: 'Kelvin ME 300 template', courses: [stock] },
+    { id: oconnor.professorId, name: 'Dr. Jacqueline O’Connor (archived Summer 2023 section)', courses: [oconnor] },
+    ...accounts.filter(a => a.role === 'instructor' && !a.disabled)
     .map(a => ({ id: a.id, name: a.name, courses: all.filter(c => c.professorId === a.id) }))];
 }
 export async function studentForEmail(emailInput) {
@@ -71,7 +76,7 @@ export async function registerProfessor({ email: input, name, password }) {
       typeof password !== 'string' || password.length < 12 || password.length > 200) throw new Error('Enter a PSU email, name, and password of at least 12 characters');
   const salt = randomBytes(16).toString('hex');
   return mutateState(accountsKey, [], data => {
-    if (data.some(a => a.email === email && a.role === 'instructor')) throw new Error('A professor account already uses this email');
+    if (data.some(a => a.email === email && ['instructor','operator','researcher'].includes(a.role))) throw new Error('An account already uses this email');
     const account = { id: `prof-${randomBytes(12).toString('hex')}`, role: 'instructor', email, name: name.trim(),
       salt, passwordHash: digest(password, salt), createdAt: new Date().toISOString(), disabled: false };
     data.push(account);
@@ -80,7 +85,7 @@ export async function registerProfessor({ email: input, name, password }) {
 }
 export async function signInProfessor(identifier, password) {
   const key = String(identifier || '').trim().toLowerCase();
-  const account = (await readState(accountsKey, [])).find(a => a.role === 'instructor' && !a.disabled &&
+  const account = (await readState(accountsKey, [])).find(a => ['instructor','operator','researcher'].includes(a.role) && !a.disabled &&
     (a.email === key || a.id.toLowerCase() === key));
   if (!account?.passwordHash || typeof password !== 'string') return null;
   const a = Buffer.from(account.passwordHash, 'hex'), b = Buffer.from(digest(password, account.salt), 'hex');
@@ -89,7 +94,7 @@ export async function signInProfessor(identifier, password) {
 export async function createCourse(professorId, input) {
   const title = String(input.title || '').trim(), code = String(input.code || '').trim();
   if (title.length < 3 || title.length > 120 || code.length < 2 || code.length > 30) throw new Error('Enter a course code and title');
-  const account = (await readState(accountsKey, [])).find(a => a.id === professorId && a.role === 'instructor' && !a.disabled);
+  const account = (await readState(accountsKey, [])).find(a => a.id === professorId && ['instructor','operator'].includes(a.role) && !a.disabled);
   if (!account) throw new Error('Professor account unavailable');
   const course = { id: `course-${randomBytes(12).toString('hex')}`, professorId, title, code, stock: true, createdAt: new Date().toISOString() };
   await mutateState(coursesKey, [], data => data.push(course));
@@ -110,11 +115,20 @@ export async function sessionAccount(token) {
 export async function revokeSession(token) {
   if (token) await mutateState(sessionsKey, {}, data => { delete data[hash(token)]; });
 }
-export async function courseFiles(courseId) { return (await readState(filesKey, [])).filter(f => f.courseId === courseId); }
-export const fileMetadata = f => ({ id: f.id, name: f.name, mimeType: f.mimeType, size: f.size, createdAt: f.createdAt, excerpt: f.text.slice(0, 180) });
+export async function courseFiles(courseId) {
+  const stored = (await readState(filesKey, [])).filter(f => f.courseId === courseId && !f.archived);
+  return courseId === oconnor.id ? [...lectures.map(f => ({ ...f, courseId, professorId: oconnor.professorId,
+    size: Buffer.byteLength(f.text), createdAt: '2023-08-11T00:00:00.000Z', version: 1, sourceTerm: 'Summer 2023' })), ...stored] : stored;
+}
+export async function courseFileVersions(courseId, name) { return (await readState(filesKey, [])).filter(f => f.courseId === courseId && f.name === name); }
+export const fileMetadata = f => ({ id: f.id, name: f.name, mimeType: f.mimeType, size: f.size, createdAt: f.createdAt,
+  version: f.version || 1, supersedes: f.supersedes || null, sourcePath: f.sourcePath || null, sourceTerm: f.sourceTerm || null,
+  excerpt: f.text.slice(0, 180) });
 export async function addCourseFile(professorId, courseId, nameInput, mimeType, base64) {
   const course = await courseById(courseId);
-  if (!course || course.professorId !== professorId || professorId === stock.professorId) throw new Error('Course unavailable');
+  const account = (await readState(accountsKey, [])).find(a => a.id === professorId && !a.disabled);
+  if (!course || !account || (account.role !== 'operator' && course.professorId !== professorId) ||
+    professorId === stock.professorId) throw new Error('Course unavailable');
   const name = String(nameInput || '').trim();
   if (!name || name.length > 120 || !/^[\w .()\-]+$/.test(name)) throw new Error('Invalid file name');
   if (typeof base64 !== 'string' || base64.length > 3_000_000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) throw new Error('File is too large or invalid');
@@ -142,7 +156,13 @@ export async function addCourseFile(professorId, courseId, nameInput, mimeType, 
   const file = { id: `file-${randomBytes(12).toString('hex')}`, courseId, professorId, name,
     mimeType: name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'text/plain', size: bytes.length,
     text: text.slice(0, 80_000), createdAt: new Date().toISOString() };
-  await mutateState(filesKey, [], data => data.push(file));
+  await mutateState(filesKey, [], data => {
+    const earlier = data.filter(item => item.courseId === courseId && item.name === name);
+    const latest = earlier.at(-1);
+    if (latest) { latest.archived = true; file.supersedes = latest.id; }
+    file.version = earlier.length + 1;
+    data.push(file);
+  });
   return fileMetadata(file);
 }
 export async function recordUsage(event) { return addStoredUsage(event); }

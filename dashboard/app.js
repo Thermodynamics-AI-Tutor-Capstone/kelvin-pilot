@@ -91,7 +91,7 @@ async function loadCourse() {
   if (!state.courseId) return renderWorkspace();
   const id = encodeURIComponent(state.courseId);
   state.detail = await api(`/api/courses/${id}`);
-  state.analytics = state.account.role === 'instructor' ? await api(`/api/courses/${id}/analytics`) : null;
+  state.analytics = ['instructor','operator'].includes(state.account.role) ? await api(`/api/courses/${id}/analytics`) : null;
   state.preview = Boolean(state.analytics?.suppressed);
   state.selected = null; renderWorkspace();
 }
@@ -103,7 +103,8 @@ function renderWorkspace() {
   app.innerHTML = `<div class="workspace-head"><div><p class="eyebrow">${professor ? 'Professor workspace' : 'Student workspace'}</p>
     <h1>${escapeHtml(course?.title || 'Your courses')}</h1><p class="lead">${professor ? 'Browse what students can see, add your materials, and follow class questions over time.' : 'See your saved learning and the material for your course.'}</p>${state.account.demoProfessor ? '<p class="notice">Sample professor account. Activity charts are illustrative; course content is real. Uploads are disabled.</p>' : ''}</div>
     ${professor && state.account.role !== 'sample' ? `<label class="course-switch">Course<select id="course-select">${state.courses.map(c => `<option value="${escapeHtml(c.id)}" ${c.id === state.courseId ? 'selected' : ''}>${escapeHtml(c.code)} · ${escapeHtml(c.title)}</option>`).join('')}</select></label>` : ''}</div>
-    <nav class="nav-tabs" aria-label="Workspace sections">${(professor ? [['activity', 'Activity over time'], ['content', 'Course content'], ['upload', 'Courses & uploads']] : [['learning', 'My learning'], ['content', 'Course content']])
+    <nav class="nav-tabs" aria-label="Workspace sections">${(professor ? state.account.role === 'researcher' ? [['activity', 'Activity over time'], ['content', 'Course content']] :
+      [['activity', 'Activity over time'], ['content', 'Course content'], ['manage', 'Schedule & versions'], ['upload', 'Courses & uploads']] : [['learning', 'My learning'], ['content', 'Course content']])
       .map(([id, label]) => `<button data-tab="${id}" class="${state.tab === id ? 'active' : ''}">${label}</button>`).join('')}</nav>
     <section id="workspace-body"></section>`;
   document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => { state.tab = button.dataset.tab; renderWorkspace(); }));
@@ -112,6 +113,7 @@ function renderWorkspace() {
   if (state.tab === 'learning') renderLearning();
   if (state.tab === 'content') renderContent();
   if (state.tab === 'upload') renderUpload();
+  if (state.tab === 'manage') renderManage();
 }
 function showError(message) { const body = document.querySelector('#workspace-body'); if (body) body.innerHTML = `<p class="error">${escapeHtml(message)}</p>`; }
 function chart(title, series, field, color) {
@@ -152,8 +154,19 @@ function renderActivity() {
     ${!data || data.suppressed ? `<div class="panel empty-state"><h2>Charts appear after five students use this course.</h2><p>Until then, Kelvin hides the activity to avoid showing an individual student's pattern. Use “Preview sample data” for a walkthrough.</p></div>` :
     `<div class="chart-grid">${chart('MCP requests', data.timeline, 'requests', '#247a82')}${chart('Saved learning reflections', data.timeline, 'reflections', '#ba7446')}</div>
     <div class="chart-grid">${comparison(data.questionTrends, 'Questions by topic')}${comparison(data.topicTrends, 'Topics students saved')}</div>
-    <div class="chart-grid">${comparison(data.cardTrends, 'Course content opened')}${comparison(data.misconceptionTrends, 'Misconceptions to revisit')}</div>`}`;
+    <div class="chart-grid">${comparison(data.cardTrends, 'Course content opened')}${comparison(data.misconceptionTrends, 'Misconceptions to revisit')}</div>
+    <section class="panel"><h2>Class conclusion</h2><p>${escapeHtml(real?.insight?.conclusion || 'Run the synthesis after students have used the course to generate an evidence-linked conclusion.')}</p>
+    ${real?.insight?.suggestion ? `<p><strong>Suggested teaching move:</strong> ${escapeHtml(real.insight.suggestion)} <small>Model-generated from aggregate counts</small></p>` : ''}
+    <p class="muted">${real?.insight ? `${real.insight.sourceCount} source calls · ${real.insight.studentCount} students · generated ${escapeHtml(new Date(real.insight.generatedAt).toLocaleString())}` : ''}</p>
+    ${real?.insight?.trends?.length ? `<details><summary>Evidence behind this conclusion</summary><ul class="simple-list">${real.insight.trends.slice(0,8).map(item =>
+      `<li>${escapeHtml((state.detail?.cards || []).find(card => card.id === item.id)?.title || item.id)} · ${item.count} opens by ${item.studentCount} students</li>`).join('')}</ul>
+      <p class="muted">Evidence event IDs: ${escapeHtml(real.insight.evidenceEventIds.slice(0,12).join(', '))}</p></details>` : ''}
+    ${state.account.role !== 'sample' ? '<button class="button secondary" id="run-dream">Refresh synthesis</button>' : ''}</section>`}`;
   document.querySelector('#preview-toggle')?.addEventListener('click', () => { state.preview = !state.preview; renderActivity(); });
+  document.querySelector('#run-dream')?.addEventListener('click', async () => {
+    try { await api(`/api/courses/${encodeURIComponent(state.courseId)}/dream`, { method: 'POST' }); await loadCourse(); }
+    catch (e) { showError(e.message); }
+  });
 }
 function renderLearning() {
   const data = state.student;
@@ -163,9 +176,47 @@ function renderLearning() {
     `<article class="record"><time>${escapeHtml(new Date(item.at).toLocaleDateString())} · ${escapeHtml(item.courseTitle || '')}</time><p>${escapeHtml(item.statement)}</p><small>Topics: ${escapeHtml((item.topics || []).join(', ') || 'Classification pending')}</small></article>`).join('')}</div>` :
     '<p class="muted">Nothing saved yet. In Claude, ask Kelvin to save a short note about what you worked on. It will appear here.</p>'}</section>
     <section class="panel"><h2>Your course connection</h2><p>Your current course is ${escapeHtml(data?.course?.title || 'not available')} with ${escapeHtml(data?.professor || 'your professor')}. To change professors, ask Claude to use Kelvin's <strong>list_professors</strong> and <strong>switch_professor</strong> tools, then refresh this page.</p><p>Your professor sees only grouped activity, not your name or individual questions.</p>
-    <p class="muted">This is an email-only demo. Anyone who enters your email can open this view, so please use test data.</p></section>`;
+    <p class="muted">This is an email-only demo. Anyone who enters your email can open this view, so please use test data.</p></section>
+    <section class="panel"><h2>Recent Kelvin activity</h2>${data?.calls?.length ? `<div class="record-list">${data.calls.slice(0,12).map(item =>
+      `<div class="record"><time>${escapeHtml(new Date(item.at).toLocaleString())} · ${escapeHtml(item.client)}</time>
+      <strong>${escapeHtml(item.tool || 'MCP request')}</strong><p>${escapeHtml(item.arguments?.question || item.arguments?.query || '')}</p>
+      <small>Course version ${escapeHtml(item.courseVersion)}</small></div>`).join('')}</div>` : '<p class="muted">No MCP calls recorded yet.</p>'}</section>
+    <section class="panel"><h2>Learning summary</h2><p>${escapeHtml(data?.insights?.statement || 'A summary appears after your instructor refreshes course synthesis.')}</p>
+    <p class="muted">${data?.insights?.sourceCount || 0} events used · ${escapeHtml(data?.insights?.modelStatus || 'pending')}</p></section>
+    <section class="panel"><h2>Import chat questions</h2><p class="muted">Upload a JSON export from ChatGPT, Claude, or Gemini My Activity. Only your prompts are imported. Use a course-specific export; this demo does not verify that every prompt is about thermodynamics.</p>
+    <form id="chat-import"><label>Platform<select name="platform"><option value="chatgpt">ChatGPT</option><option value="claude">Claude</option><option value="gemini">Gemini</option></select></label>
+    <label>Export file<input type="file" name="file" accept=".json,.html,application/json,text/html" required></label><button class="button">Import</button></form>
+    <p class="muted">${(data?.imports || []).map(item => `${escapeHtml(item.platform)}: ${item.count} prompts`).join(' · ')}</p><p id="import-result" role="status"></p></section>`;
   document.querySelector('#refresh-student').addEventListener('click', async () => {
     try { state.account = await api('/api/me'); await loadWorkspace(); } catch (e) { showError(e.message); }
+  });
+  document.querySelector('#chat-import').addEventListener('submit', async event => {
+    event.preventDefault(); const form = new FormData(event.currentTarget), file = form.get('file');
+    if (!file || file.size > 50_000_000) { document.querySelector('#import-result').textContent = 'Choose a JSON file under 50 MB.'; return; }
+    try { const platform = form.get('platform'), raw = await file.text();
+      const isHtml = /\.html?$/i.test(file.name);
+      if (isHtml && platform !== 'gemini') throw new Error('Use a JSON export for ChatGPT or Claude.');
+      const source = isHtml ? null : JSON.parse(raw), prompts = [];
+      if (isHtml) { const doc = new DOMParser().parseFromString(raw, 'text/html');
+        for (const cell of doc.querySelectorAll('.outer-cell, .activity-entry')) {
+          const text = cell.querySelector('.content-cell, .activity-description')?.textContent?.trim() || '';
+          if (text) prompts.push({ conversation: 'Gemini activity', at: null, text });
+        }
+      }
+      if (platform === 'chatgpt') for (const chat of (Array.isArray(source) ? source : source.conversations || []))
+        for (const node of Object.values(chat.mapping || {})) { const m = node.message;
+          if (m?.author?.role === 'user') prompts.push({ conversation: chat.title, at: m.create_time ? new Date(m.create_time * 1000).toISOString() : null,
+            text: (m.content?.parts || []).filter(x => typeof x === 'string').join('\n') }); }
+      if (platform === 'claude') for (const chat of (Array.isArray(source) ? source : source.conversations || []))
+        for (const m of chat.chat_messages || chat.messages || []) if (['human','user'].includes(m.sender || m.role))
+          prompts.push({ conversation: chat.name || chat.title, at: m.created_at,
+            text: Array.isArray(m.content) ? m.content.map(x => x.text || '').join('\n') : String(m.text || m.content || '') });
+      if (platform === 'gemini') for (const item of (Array.isArray(source) ? source : source.activities || source.events || []))
+        prompts.push({ conversation: item.header, at: item.time || item.timestamp, text: item.title || item.prompt || item.text || '' });
+      const data = { prompts: prompts.filter(x => x.text?.length >= 10).slice(-500).map(x => ({ ...x, text: x.text.slice(0, 1500) })) };
+      const result = await api('/api/student/import', { method: 'POST', body: { platform, data } });
+      document.querySelector('#import-result').textContent = `Imported ${result.count} prompts.`; }
+    catch (e) { document.querySelector('#import-result').textContent = e.message; }
   });
 }
 async function openItem(kind, id) {
@@ -188,17 +239,77 @@ function renderContent() {
       <label class="search-label">Find content<input id="content-search" type="search" value="${escapeHtml(state.query)}" placeholder="Search this category"></label>
       <div class="content-items">${shown.length ? shown.map(item => `<button class="content-item" data-item="${escapeHtml(item.id)}" data-kind="${item.kind}"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.description || '')}</span></button>`).join('') : '<p class="muted">No items match this search.</p>'}</div></section>
     <section class="panel content-preview"><h2>${escapeHtml(state.selected?.title || 'Choose an item')}</h2><p class="muted">${escapeHtml(state.selected?.description || 'Open a card or file to read the full content.')}</p>
-    ${state.selected ? `<pre id="content-text"></pre>` : ''}</section></div>`;
+    ${state.selected ? `<pre id="content-text"></pre>${['instructor','operator'].includes(state.account.role) && !state.account.demoProfessor &&
+      (state.account.role === 'operator' || state.detail?.course?.professorId === state.account.id) ? '<button id="edit-item" class="button secondary">Edit this item</button>' : ''}` : ''}</section></div>`;
   if (state.selected) document.querySelector('#content-text').textContent = state.selected.content;
+  document.querySelector('#edit-item')?.addEventListener('click', () => editSelected());
   document.querySelectorAll('[data-category]').forEach(button => button.addEventListener('click', () => {
     state.category = button.dataset.category; state.query = ''; state.selected = null; renderContent();
   }));
   document.querySelector('#content-search').addEventListener('input', event => { state.query = event.target.value; renderContent(); document.querySelector('#content-search').focus(); });
   document.querySelectorAll('[data-item]').forEach(button => button.addEventListener('click', () => openItem(button.dataset.kind, button.dataset.item).catch(e => showError(e.message))));
 }
+function editSelected() {
+  const item = state.selected;
+  if (!item) return;
+  const kind = item.kind === 'skill' ? 'skill' : 'card';
+  const pane = document.querySelector('.content-preview');
+  pane.innerHTML = `<h2>Edit ${escapeHtml(item.title)}</h2><p class="muted">Saving creates a new course version. Students will see the published version immediately.</p>
+    <form id="item-editor"><label>Title<input name="title" maxlength="160" required></label><label>Description<textarea name="description" maxlength="1000"></textarea></label>
+    <label>Content<textarea name="body" rows="18" required></textarea></label><label>Reason for change<input name="reason" maxlength="500"></label>
+    <button class="button">Save version</button></form><p id="edit-result" role="status"></p>`;
+  pane.querySelector('[name="title"]').value = item.title;
+  pane.querySelector('[name="description"]').value = item.description || '';
+  pane.querySelector('[name="body"]').value = item.content || '';
+  pane.querySelector('#item-editor').addEventListener('submit', async event => {
+    event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
+    try { await api(`/api/courses/${encodeURIComponent(state.courseId)}/revisions`, { method: 'POST',
+      body: { kind, itemId: item.id, value: { ...values, kind: item.kind }, reason: values.reason, expectedVersion: state.detail.version } });
+      await loadCourse(); }
+    catch (e) { pane.querySelector('#edit-result').textContent = e.message; }
+  });
+}
+async function renderManage() {
+  const body = document.querySelector('#workspace-body'), course = state.detail?.course;
+  const readOnly = state.account.role === 'sample' || state.account.demoProfessor ||
+    (state.account.role !== 'operator' && course?.professorId !== state.account.id);
+  body.innerHTML = `<div class="upload-grid"><section class="panel"><h2>Semester position</h2><p class="muted">${escapeHtml(state.detail?.position?.guidance || '')}</p>
+    <p>Current week: ${escapeHtml(state.detail?.position?.week ?? 'not set')} · Module: ${escapeHtml(state.detail?.position?.module || 'full map')}</p>
+    ${readOnly ? '' : `<form id="schedule-form"><label>Term<input name="term" required></label><label>First day of term<input name="startDate" type="date" required></label><button class="button">Save schedule</button></form>`}</section>
+    <section class="panel"><h2>Course versions</h2><p>Current version ${escapeHtml(state.detail?.version || 0)}</p><div id="revision-list">Loading…</div></section></div>
+    ${course?.sourceCourse ? '<section class="panel"><h2>Canvas source inventory</h2><p class="muted">The source archive includes lecture decks and assessment files. Solutions are listed here for instructors but are not exposed through student tools.</p><div id="source-list">Loading…</div></section>' : ''}`;
+  const schedule = state.detail?.schedule || {};
+  if (!readOnly) {
+    body.querySelector('[name="term"]').value = schedule.term || '';
+    body.querySelector('[name="startDate"]').value = schedule.startDate || '';
+    body.querySelector('#schedule-form').addEventListener('submit', async event => {
+      event.preventDefault(); try { await api(`/api/courses/${encodeURIComponent(state.courseId)}/schedule`, { method: 'PUT', body: Object.fromEntries(new FormData(event.currentTarget)) }); await loadCourse(); }
+      catch (e) { showError(e.message); }
+    });
+  }
+  if (state.account.role === 'sample') { body.querySelector('#revision-list').textContent = 'Sample view'; return; }
+  try {
+    const revisions = await api(`/api/courses/${encodeURIComponent(state.courseId)}/revisions`);
+    body.querySelector('#revision-list').innerHTML = revisions.length ? revisions.slice(-20).reverse().map(r =>
+      `<div class="record"><strong>v${r.version} · ${escapeHtml(r.itemId)}</strong><p>${escapeHtml(r.reason || 'Edited')}</p><small>${escapeHtml(new Date(r.at).toLocaleString())}</small>
+      ${readOnly ? '' : `<button class="button secondary" data-restore="${escapeHtml(r.id)}" data-item="${escapeHtml(r.itemId)}">Restore this version</button>`}</div>`).join('') : '<p>No course edits yet.</p>';
+    body.querySelectorAll('[data-restore]').forEach(button => button.addEventListener('click', async () => {
+      try { await api(`/api/courses/${encodeURIComponent(state.courseId)}/revisions/restore`, { method: 'POST',
+        body: { itemId: button.dataset.item, revisionId: button.dataset.restore, expectedVersion: state.detail.version } }); await loadCourse(); }
+      catch (e) { showError(e.message); }
+    }));
+    if (course?.sourceCourse) {
+      const inventory = await api(`/api/courses/${encodeURIComponent(state.courseId)}/source-inventory`);
+      body.querySelector('#source-list').innerHTML = `<p>${inventory.items.length} source files in ${escapeHtml(inventory.repository)}</p>
+        <details><summary>Browse files</summary><ul class="simple-list">${inventory.items.map(f => `<li>${escapeHtml(f.path)}</li>`).join('')}</ul></details>`;
+    }
+  } catch (e) { showError(e.message); }
+}
 function renderUpload() {
   const body = document.querySelector('#workspace-body');
-  if (state.account.role === 'sample' || state.account.demoProfessor) { body.innerHTML = '<section class="panel"><h2>Sample view</h2><p>This account is read-only. Create your own professor account to add courses and files.</p></section>'; return; }
+  if (state.account.role === 'sample' || state.account.demoProfessor ||
+      (state.account.role !== 'operator' && state.detail?.course?.professorId !== state.account.id)) {
+    body.innerHTML = '<section class="panel"><h2>Reference course</h2><p>This course is read-only for your account. Select your own course to add materials.</p></section>'; return; }
   body.innerHTML = `<div class="upload-grid"><section class="panel"><h2>Add a course</h2><p class="muted">Each course starts with the stock ME 300 collection. Files you add stay with that course.</p>
     <form id="course-form"><label>Course code<input name="code" placeholder="ME 300" maxlength="30" required></label>
     <label>Course title<input name="title" placeholder="Engineering Thermodynamics" maxlength="120" required></label><button class="button">Create course</button></form></section>

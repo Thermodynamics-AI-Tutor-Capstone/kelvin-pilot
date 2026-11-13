@@ -79,7 +79,7 @@ test('canonical MCP requires email OAuth, serves course content, and logs safe u
     for (const name of ['course_map', 'search_course', 'get_card']) assert.match(tools.find(t => t.name === name).description, /thermodynamics/i);
     assert.doesNotMatch(student.getInstructions(), /sample|placeholder|unverified/i);
     const map = parse(await student.callTool({ name: 'course_map', arguments: {} }));
-    assert.equal(map.units.length, 9);
+    assert.equal(map.units.length, 8);
     assert.match(map.provenance, /real Penn State ME 300 Engineering Thermodynamics materials/);
     const matches = parse(await student.callTool({ name: 'search_course', arguments: { query: 'entropy', kind: 'topic' } }));
     assert.ok(matches.matches.some(x => x.id === 'topic:m7-07-entropy'));

@@ -17,6 +17,9 @@ async function database() {
     await pool.query('CREATE TABLE IF NOT EXISTS kelvin_state (key text PRIMARY KEY, value jsonb NOT NULL)');
     await pool.query('CREATE TABLE IF NOT EXISTS kelvin_events (id uuid PRIMARY KEY, at timestamptz NOT NULL, value jsonb NOT NULL)');
     await pool.query('CREATE TABLE IF NOT EXISTS kelvin_usage (id uuid PRIMARY KEY, at timestamptz NOT NULL, value jsonb NOT NULL)');
+    await pool.query('CREATE TABLE IF NOT EXISTS kelvin_rpc_events (id uuid PRIMARY KEY, at timestamptz NOT NULL, course_id text, student_id text, value jsonb NOT NULL)');
+    await pool.query('CREATE INDEX IF NOT EXISTS kelvin_rpc_course_at ON kelvin_rpc_events (course_id, at DESC)');
+    await pool.query('CREATE INDEX IF NOT EXISTS kelvin_rpc_student_at ON kelvin_rpc_events (student_id, at DESC)');
   })().catch(error => { schemaReady = null; throw error; });
   await schemaReady;
   return pool;
@@ -99,6 +102,29 @@ export async function storedUsage(courseId) {
   if (db) return (await db.query("SELECT value FROM kelvin_usage WHERE value->>'courseId' = $1 ORDER BY at, id", [courseId])).rows.map(row => row.value);
   const path = localPath('usage.jsonl');
   return existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(row => row.courseId === courseId) : [];
+}
+export async function addRpcEvent(event) {
+  const db = await database();
+  if (db) await db.query('INSERT INTO kelvin_rpc_events (id, at, course_id, student_id, value) VALUES ($1,$2,$3,$4,$5::jsonb)',
+    [event.id, event.at, event.courseId, event.studentId, JSON.stringify(event)]);
+  else {
+    mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+    appendFileSync(localPath('rpc-events.jsonl'), `${JSON.stringify(event)}\n`, { mode: 0o600 });
+  }
+  return event;
+}
+export async function storedRpcEvents(courseId, studentId) {
+  const db = await database();
+  if (db) {
+    const conditions = [], params = [];
+    if (courseId) { params.push(courseId); conditions.push(`course_id = $${params.length}`); }
+    if (studentId) { params.push(studentId); conditions.push(`student_id = $${params.length}`); }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    return (await db.query(`SELECT value FROM kelvin_rpc_events ${where} ORDER BY at DESC LIMIT 5000`, params)).rows.map(r => r.value).reverse();
+  }
+  const path = localPath('rpc-events.jsonl');
+  return (existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : [])
+    .filter(e => (!courseId || e.courseId === courseId) && (!studentId || e.studentId === studentId));
 }
 
 export async function deleteStoredEvents(studentId) {
