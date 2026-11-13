@@ -66,7 +66,8 @@ export async function restoreCourseVersion(courseId, account, course, itemId, re
 export async function courseSchedule(courseId) {
   const configured = (await readState(scheduleKey, {}))[courseId];
   if (configured) return configured;
-  return { term: courseId === 'oconnor-me300-su23' ? 'Summer 2023' : 'Demo term', startDate: null, weekLengthDays: 7,
+  return { term: courseId === 'oconnor-me300-su23' ? 'Summer 2023' : 'Demo term',
+    startDate: courseId === 'oconnor-me300-su23' ? '2023-05-15' : null, weekLengthDays: 7,
     modules: ['M1','M2','M3','M4','M5','M6','M7','M8'], currentWeek: null,
     note: 'Set the current term start date in the professor dashboard. Summer 2023 dates are historical.' };
 }
