@@ -38,17 +38,17 @@ signout.addEventListener('click', async () => {
 });
 async function welcome() {
   signout.classList.add('hidden'); identity.textContent = '';
-  app.innerHTML = `<section class="intro"><p class="eyebrow">ME 300 · Thermodynamics</p><h1>Your course, in one place.</h1><p class="lead">Students can check what Kelvin saved. Professors can review course materials and see how questions change over time.</p></section>
-    <div class="entry-grid"><section class="panel entry-card"><span class="entry-icon">↗</span><h2>I'm a student</h2><p>Connect Kelvin in Claude first to choose your professor. Then use your PSU email to see what Kelvin has saved.</p>
+  app.innerHTML = `<section class="intro"><h1>Kelvin dashboard</h1></section>
+    <div class="entry-grid"><section class="panel entry-card"><h2>Student</h2><p>Use the email you connected in Claude.</p>
       <form id="student-form"><label>PSU email<input type="email" name="email" placeholder="you@psu.edu" autocomplete="email" required></label>
-      <button class="button full">Open my workspace</button></form></section>
-    <section class="panel entry-card"><span class="entry-icon">◫</span><h2>I'm a professor</h2><p>Create an account to browse the stock ME 300 materials, add courses and upload your own files.</p>
+      <button class="button full">Open dashboard</button></form></section>
+    <section class="panel entry-card"><h2>Professor</h2>
       <div class="tab-row"><button class="mini-tab active" data-auth="signin">Sign in</button><button class="mini-tab" data-auth="register">Create account</button></div>
       <form id="professor-form"><div id="name-row" class="hidden"><label>Your name<input name="name" autocomplete="name"></label></div>
       <label>PSU email or account ID<input name="email" autocomplete="username" required></label>
       <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
-      <button class="button full" id="professor-submit">Sign in</button></form><p class="hint">For the sample view, sign in with username / password.</p></section></div>
-    <p class="notice">Demo sign-in does not verify student email ownership. Please use test data, not real student records.</p><p id="message" class="error" role="alert"></p>`;
+      <button class="button full" id="professor-submit">Sign in</button></form><p class="hint">Sample view: username / password</p></section></div>
+    <p id="message" class="error" role="alert"></p>`;
   document.querySelector('#student-form').addEventListener('submit', async event => {
     event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
     try { await setSession(await api('/api/student-session', { method: 'POST', body: values, auth: false })); } catch (e) { error(e.message); }
@@ -100,9 +100,9 @@ function renderWorkspace() {
   identity.textContent = state.account.email || state.account.name;
   signout.classList.remove('hidden');
   const course = state.detail?.course || state.courses[0];
-  app.innerHTML = `<div class="workspace-head"><div><p class="eyebrow">${professor ? 'Professor workspace' : 'Student workspace'}</p>
-    <h1>${escapeHtml(course?.title || 'Your courses')}</h1><p class="lead">${professor ? 'Browse what students can see, add your materials, and follow class questions over time.' : 'See your saved learning and the material for your course.'}</p>${state.account.demoProfessor ? '<p class="notice">Sample professor account. Activity charts are illustrative; course content is real. Uploads are disabled.</p>' : ''}</div>
-    ${professor && state.account.role !== 'sample' ? `<label class="course-switch">Course<select id="course-select">${state.courses.map(c => `<option value="${escapeHtml(c.id)}" ${c.id === state.courseId ? 'selected' : ''}>${escapeHtml(c.code)} · ${escapeHtml(c.title)}</option>`).join('')}</select></label>` : ''}</div>
+  app.innerHTML = `<div class="workspace-head">${professor && state.account.role !== 'sample' ?
+    `<label class="course-switch">Course<select id="course-select">${state.courses.map(c => `<option value="${escapeHtml(c.id)}" ${c.id === state.courseId ? 'selected' : ''}>${escapeHtml(c.code)} · ${escapeHtml(c.title)}</option>`).join('')}</select></label>` :
+    `<h1>${escapeHtml(professor ? course?.code || course?.title : course?.title || 'Your course')}</h1>`}</div>
     <nav class="nav-tabs" aria-label="Workspace sections">${(professor ? state.account.role === 'researcher' ? [['activity', 'Activity over time'], ['content', 'Course content']] :
       [['activity', 'Activity over time'], ['content', 'Course content'], ['manage', 'Schedule & versions'], ['upload', 'Courses & uploads']] : [['learning', 'My learning'], ['content', 'Course content']])
       .map(([id, label]) => `<button data-tab="${id}" class="${state.tab === id ? 'active' : ''}">${label}</button>`).join('')}</nav>
@@ -129,33 +129,32 @@ function chart(title, series, field, color) {
   if (current.length) segments.push(current);
   const paths = segments.map(segment => `<path d="${segment.join(' ')}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
   const dots = visible.map(point => `<circle cx="${x(point.x)}" cy="${y(point.y).toFixed(1)}" r="3.5" fill="${color}"><title>${escapeHtml(point.date)}: ${point.y}</title></circle>`).join('');
-  return `<section class="panel chart-card"><h2>${title}</h2><p class="muted">Daily counts, last 14 days · hidden when fewer than five students contributed that day</p>
+  return `<section class="panel chart-card"><h2>${title}</h2>
     <svg viewBox="0 0 620 165" role="img" aria-label="${title} over 14 days"><line x1="44" y1="128" x2="566" y2="128" stroke="#cad7dc"/>
     <text x="4" y="22" class="axis">${max}</text><text x="18" y="132" class="axis">0</text>${paths}${dots}
     <text x="44" y="153" class="axis">${escapeHtml(series[0]?.date || '')}</text><text x="490" y="153" class="axis">${escapeHtml(series.at(-1)?.date || '')}</text></svg>
     <details><summary>View daily values</summary><div class="daily-list">${series.map(point => `<span>${escapeHtml(point.date)}</span><span>${point[field] === null ? 'Hidden' : point[field]}</span>`).join('')}</div></details></section>`;
 }
 function comparison(items, title) {
-  if (!items?.length) return `<section class="panel"><h2>${title}</h2><p class="muted">No category meets the five-student threshold yet.</p></section>`;
+  if (!items?.length) return `<section class="panel"><h2>${title}</h2><p class="muted">No visible data yet.</p></section>`;
   const names = new Map((state.detail?.cards || []).map(card => [card.id, card.title]));
   const max = Math.max(1, ...items.map(item => Math.max(item.recent, item.previous)));
-  return `<section class="panel"><h2>${title}</h2><p class="muted">Last 7 days compared with the 7 days before</p><div class="compare-list">${items.map(item =>
+  return `<section class="panel"><h2>${title}</h2><div class="compare-list">${items.map(item =>
     `<div class="compare-row"><div class="compare-label"><strong>${escapeHtml(names.get(item.id) || item.id)}</strong><span>${item.previous} → ${item.recent}</span></div>
     <div class="bar-pair"><span style="width:${Math.max(2, item.previous / max * 100)}%"></span><span style="width:${Math.max(2, item.recent / max * 100)}%"></span></div></div>`).join('')}</div>
-    <p class="legend"><i></i> Previous week <i></i> Recent week</p></section>`;
+    <p class="legend"><i></i> Previous 7 days <i></i> Recent 7 days</p></section>`;
 }
 function renderActivity() {
   const real = state.analytics, data = state.preview || state.account.role === 'sample' ? demoAnalytics() : real;
   const sample = Boolean(data?.sample);
   const body = document.querySelector('#workspace-body');
-  body.innerHTML = `<div class="section-title"><div><h2>How the class is using Kelvin</h2><p class="muted">This view groups activity by course. It never shows who asked a question.</p></div>
-    ${state.account.role !== 'sample' ? `<button id="preview-toggle" class="button secondary">${state.preview ? 'Back to live data' : 'Preview sample data'}</button>` : ''}</div>
-    ${sample ? '<p class="notice">Sample data for a walkthrough. These charts do not represent student activity.</p>' : ''}
-    ${!data || data.suppressed ? `<div class="panel empty-state"><h2>Charts appear after five students use this course.</h2><p>Until then, Kelvin hides the activity to avoid showing an individual student's pattern. Use “Preview sample data” for a walkthrough.</p></div>` :
+  body.innerHTML = `<div class="section-title"><div><h2>Activity <span class="period-label">Last 14 days</span>${sample ? '<span class="sample-badge">Sample data</span>' : ''}</h2></div>
+    ${state.account.role !== 'sample' ? `<button id="preview-toggle" class="button secondary">${state.preview ? 'Live data' : 'Sample data'}</button>` : ''}</div>
+    ${!data || data.suppressed ? `<div class="panel empty-state"><h2>No class activity to show yet</h2><p>Charts appear after five students use this course.</p></div>` :
     `<div class="chart-grid">${chart('MCP requests', data.timeline, 'requests', '#247a82')}${chart('Saved learning reflections', data.timeline, 'reflections', '#ba7446')}</div>
-    <div class="chart-grid">${comparison(data.questionTrends, 'Questions by topic')}${comparison(data.topicTrends, 'Topics students saved')}</div>
-    <div class="chart-grid">${comparison(data.cardTrends, 'Course content opened')}${comparison(data.misconceptionTrends, 'Misconceptions to revisit')}</div>
-    <section class="panel"><h2>Class conclusion</h2><p>${escapeHtml(real?.insight?.conclusion || 'Run the synthesis after students have used the course to generate an evidence-linked conclusion.')}</p>
+    <div class="chart-grid">${comparison(data.questionTrends, 'Questions by topic')}${comparison(data.misconceptionTrends, 'Misconceptions to revisit')}</div>
+    <details class="more-detail"><summary>More breakdowns</summary><div class="chart-grid">${comparison(data.topicTrends, 'Topics students saved')}${comparison(data.cardTrends, 'Course content opened')}</div></details>
+    ${sample ? '' : `<section class="panel"><h2>Class takeaway</h2><p>${escapeHtml(real?.insight?.conclusion || 'No takeaway yet.')}</p>
     ${real?.insight?.suggestion ? `<p><strong>Suggested teaching move:</strong> ${escapeHtml(real.insight.suggestion)} <small>Model-generated from aggregate counts</small></p>` : ''}
     <p class="muted">${real?.insight ? `${real.insight.sourceCount} source calls · ${real.insight.studentCount} students · generated ${escapeHtml(new Date(real.insight.generatedAt).toLocaleString())}` : ''}</p>
     ${real?.insight?.trends?.length ? `<details><summary>Evidence behind this conclusion</summary><ul class="simple-list">${real.insight.trends.slice(0,8).map(item =>
@@ -164,7 +163,7 @@ function renderActivity() {
     ${real?.insight?.questionTopics?.length ? `<details><summary>Question topics from student activity</summary><ul class="simple-list">${real.insight.questionTopics.slice(0,8).map(item =>
       `<li>${escapeHtml((state.detail?.cards || []).find(card => card.id === item.id)?.title || item.id)} · ${item.studentCount} students</li>`).join('')}</ul>
       <p class="muted">Topic labels are model-generated. Evidence includes MCP calls and student-imported prompts.</p></details>` : ''}
-    ${['instructor','operator'].includes(state.account.role) ? '<button class="button secondary" id="run-dream">Refresh synthesis</button>' : ''}</section>`}`;
+    ${['instructor','operator'].includes(state.account.role) ? '<button class="button secondary" id="run-dream">Refresh synthesis</button>' : ''}</section>`}`}`;
   document.querySelector('#preview-toggle')?.addEventListener('click', () => { state.preview = !state.preview; renderActivity(); });
   document.querySelector('#run-dream')?.addEventListener('click', async () => {
     try { await api(`/api/courses/${encodeURIComponent(state.courseId)}/dream`, { method: 'POST' }); await loadCourse(); }
@@ -174,19 +173,17 @@ function renderActivity() {
 function renderLearning() {
   const data = state.student;
   const body = document.querySelector('#workspace-body');
-  body.innerHTML = `<div class="section-title"><div><h2>What Kelvin has saved for you</h2><p class="muted">${escapeHtml(data?.account.email || '')} · ${escapeHtml(data?.professor || '')} · ${escapeHtml(data?.course?.code || '')}</p></div><button id="refresh-student" class="button secondary">Refresh</button></div>
+  body.innerHTML = `<div class="section-title"><div><h2>My learning</h2><p class="muted">${escapeHtml(data?.professor || '')}</p></div><button id="refresh-student" class="button secondary">Refresh</button></div>
     <section class="panel"><h2>Saved learning</h2>${data?.reflections?.length ? `<div class="record-list">${data.reflections.map(item =>
     `<article class="record"><time>${escapeHtml(new Date(item.at).toLocaleDateString())} · ${escapeHtml(item.courseTitle || '')}</time><p>${escapeHtml(item.statement)}</p><small>Topics: ${escapeHtml((item.topics || []).join(', ') || 'Classification pending')}</small></article>`).join('')}</div>` :
-    '<p class="muted">Nothing saved yet. In Claude, ask Kelvin to save a short note about what you worked on. It will appear here.</p>'}</section>
-    <section class="panel"><h2>Your course connection</h2><p>Your current course is ${escapeHtml(data?.course?.title || 'not available')} with ${escapeHtml(data?.professor || 'your professor')}. To change professors, ask Claude to use Kelvin's <strong>list_professors</strong> and <strong>switch_professor</strong> tools, then refresh this page.</p><p>Your professor sees only grouped activity, not your name or individual questions.</p>
-    <p class="muted">This is an email-only demo. Anyone who enters your email can open this view, so please use test data.</p></section>
+    '<p class="muted">No saved notes yet.</p>'}</section>
     <section class="panel"><h2>Recent Kelvin activity</h2>${data?.calls?.length ? `<div class="record-list">${data.calls.slice(0,12).map(item =>
       `<div class="record"><time>${escapeHtml(new Date(item.at).toLocaleString())} · ${escapeHtml(item.client)}</time>
       <strong>${escapeHtml(item.tool || 'MCP request')}</strong><p>${escapeHtml(item.arguments?.question || item.arguments?.query || '')}</p>
       <small>Course version ${escapeHtml(item.courseVersion)}</small></div>`).join('')}</div>` : '<p class="muted">No MCP calls recorded yet.</p>'}</section>
-    <section class="panel"><h2>Learning summary</h2><p>${escapeHtml(data?.insights?.statement || 'A summary appears after your instructor refreshes course synthesis.')}</p>
+    <section class="panel"><h2>Learning summary</h2><p>${escapeHtml(data?.insights?.statement || 'No summary yet.')}</p>
     <p class="muted">${data?.insights?.sourceCount || 0} events used · ${escapeHtml(data?.insights?.modelStatus || 'pending')}</p></section>
-    <section class="panel"><h2>Import chat questions</h2><p class="muted">Upload a JSON export from ChatGPT, Claude, or Gemini My Activity. Only your prompts are imported. Use a course-specific export; this demo does not verify that every prompt is about thermodynamics.</p>
+    <section class="panel"><h2>Import chat questions</h2><p class="muted">ChatGPT, Claude, or Gemini export. Kelvin imports your prompts.</p>
     <form id="chat-import"><label>Platform<select name="platform"><option value="chatgpt">ChatGPT</option><option value="claude">Claude</option><option value="gemini">Gemini</option></select></label>
     <label>Export file<input type="file" name="file" accept=".json,.html,application/json,text/html" required></label><button class="button">Import</button></form>
     <p class="muted">${(data?.imports || []).map(item => `${escapeHtml(item.platform)}: ${item.count} prompts`).join(' · ')}</p><p id="import-result" role="status"></p></section>`;
@@ -233,17 +230,17 @@ async function openItem(kind, id) {
 }
 function renderContent() {
   const detail = state.detail || { cards: [], skills: [], files: [] };
-  const categories = [['course', 'Course'], ['unit', 'Units'], ['topic', 'Topics'], ['misconception', 'Misconceptions'], ['skill', 'Teaching skills'], ['file', 'Uploaded files']];
+  const categories = [['course', 'Course'], ['unit', 'Units'], ['topic', 'Topics'], ['misconception', 'Misconceptions'], ['skill', 'Teaching skills'], ['file', 'Files']];
   const items = state.category === 'file' ? detail.files.map(f => ({ id: f.id, title: f.name, description: f.excerpt, kind: 'file' }))
     : state.category === 'skill' ? detail.skills.map(s => ({ id: s.id, title: s.name.replaceAll('-', ' '), description: s.description, kind: 'skill' }))
       : detail.cards.filter(c => c.kind === state.category);
   const shown = items.filter(item => `${item.title} ${item.description || ''}`.toLowerCase().includes(state.query.toLowerCase()));
-  document.querySelector('#workspace-body').innerHTML = `<div class="section-title"><div><h2>Course content</h2><p class="muted">This is what students can find through the course connector. Uploaded files belong to this course only.</p></div></div>
-    <div class="content-layout"><section class="panel content-list"><div class="category-row">${categories.map(([id, label]) =>
+  document.querySelector('#workspace-body').innerHTML = `<div class="section-title"><h2>Course content</h2></div>
+    <div class="content-layout ${state.selected ? '' : 'no-selection'}"><section class="panel content-list"><div class="category-row">${categories.map(([id, label]) =>
       `<button class="mini-tab ${state.category === id ? 'active' : ''}" data-category="${id}">${label}</button>`).join('')}</div>
-      <label class="search-label">Find content<input id="content-search" type="search" value="${escapeHtml(state.query)}" placeholder="Search this category"></label>
+      <label class="search-label"><span class="visually-hidden">Find content</span><input id="content-search" type="search" value="${escapeHtml(state.query)}" placeholder="Search ${escapeHtml(state.category)}"></label>
       <div class="content-items">${shown.length ? shown.map(item => `<button class="content-item" data-item="${escapeHtml(item.id)}" data-kind="${item.kind}"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.description || '')}</span></button>`).join('') : '<p class="muted">No items match this search.</p>'}</div></section>
-    <section class="panel content-preview"><h2>${escapeHtml(state.selected?.title || 'Choose an item')}</h2><p class="muted">${escapeHtml(state.selected?.description || 'Open a card or file to read the full content.')}</p>
+    <section class="panel content-preview"><h2>${escapeHtml(state.selected?.title || 'Select an item')}</h2>${state.selected?.description ? `<p class="muted">${escapeHtml(state.selected.description)}</p>` : ''}
     ${state.selected ? `<pre id="content-text"></pre>${state.selected.versions?.length > 1 ? `<details><summary>File versions</summary><ul class="simple-list">${state.selected.versions.map(v =>
       `<li>v${v.version} · ${escapeHtml(new Date(v.createdAt).toLocaleDateString())}</li>`).join('')}</ul></details>` : ''}${['instructor','operator'].includes(state.account.role) && !state.account.demoProfessor &&
       (state.account.role === 'operator' || state.detail?.course?.professorId === state.account.id) ? '<button id="edit-item" class="button secondary">Edit this item</button>' : ''}` : ''}</section></div>`;
@@ -260,7 +257,7 @@ function editSelected() {
   if (!item) return;
   const kind = item.kind === 'skill' ? 'skill' : 'card';
   const pane = document.querySelector('.content-preview');
-  pane.innerHTML = `<h2>Edit ${escapeHtml(item.title)}</h2><p class="muted">Saving creates a new course version. Students will see the published version immediately.</p>
+  pane.innerHTML = `<h2>Edit ${escapeHtml(item.title)}</h2>
     <form id="item-editor"><label>Title<input name="title" maxlength="160" required></label><label>Description<textarea name="description" maxlength="1000"></textarea></label>
     <label>Content<textarea name="body" rows="18" required></textarea></label><label>Reason for change<input name="reason" maxlength="500"></label>
     <button class="button">Save version</button></form><p id="edit-result" role="status"></p>`;
@@ -283,7 +280,7 @@ async function renderManage() {
     <p>Current week: ${escapeHtml(state.detail?.position?.week ?? 'not set')} · Module: ${escapeHtml(state.detail?.position?.module || 'full map')}</p>
     ${readOnly ? '' : `<form id="schedule-form"><label>Term<input name="term" required></label><label>First day of term<input name="startDate" type="date" required></label><button class="button">Save schedule</button></form>`}</section>
     <section class="panel"><h2>Course versions</h2><p>Current version ${escapeHtml(state.detail?.version || 0)}</p><div id="revision-list">Loading…</div></section></div>
-    ${course?.sourceCourse ? '<section class="panel"><h2>Canvas source inventory</h2><p class="muted">The source archive includes lecture decks and assessment files. Solutions are listed here for instructors but are not exposed through student tools.</p><div id="source-list">Loading…</div></section>' : ''}`;
+    ${course?.sourceCourse ? '<section class="panel"><h2>Canvas source inventory</h2><div id="source-list">Loading…</div></section>' : ''}`;
   const schedule = state.detail?.schedule || {};
   if (!readOnly) {
     body.querySelector('[name="term"]').value = schedule.term || '';
@@ -316,10 +313,10 @@ function renderUpload() {
   if (state.account.role === 'sample' || state.account.demoProfessor ||
       (state.account.role !== 'operator' && state.detail?.course?.professorId !== state.account.id)) {
     body.innerHTML = '<section class="panel"><h2>Reference course</h2><p>This course is read-only for your account. Select your own course to add materials.</p></section>'; return; }
-  body.innerHTML = `<div class="upload-grid"><section class="panel"><h2>Add a course</h2><p class="muted">Each course starts with the stock ME 300 collection. Files you add stay with that course.</p>
+  body.innerHTML = `<div class="upload-grid"><section class="panel"><h2>Add a course</h2>
     <form id="course-form"><label>Course code<input name="code" placeholder="ME 300" maxlength="30" required></label>
     <label>Course title<input name="title" placeholder="Engineering Thermodynamics" maxlength="120" required></label><button class="button">Create course</button></form></section>
-    <section class="panel"><h2>Upload to ${escapeHtml(state.detail.course.code)}</h2><p class="muted">PDF, TXT, MD, or CSV · up to 2 MB. Kelvin reads the text so students can find it through the MCP.</p>
+    <section class="panel"><h2>Upload to ${escapeHtml(state.detail.course.code)}</h2><p class="muted">PDF, TXT, MD, CSV · 2 MB max</p>
     <form id="upload-form"><label>Choose a file<input name="file" type="file" accept=".pdf,.txt,.md,.csv" required></label><button class="button">Upload file</button></form>
     <p id="upload-message" class="error" role="status"></p></section></div>
     <section class="panel"><h2>Files in this course</h2>${state.detail.files.length ? `<ul class="simple-list">${state.detail.files.map(file => `<li>${escapeHtml(file.name)} <small>v${escapeHtml(file.version)} · ${escapeHtml(new Date(file.createdAt).toLocaleDateString())}</small></li>`).join('')}</ul>` : '<p class="muted">No files uploaded yet.</p>'}</section>`;
