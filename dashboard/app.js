@@ -164,7 +164,7 @@ function renderActivity() {
     ${real?.insight?.questionTopics?.length ? `<details><summary>Question topics from student activity</summary><ul class="simple-list">${real.insight.questionTopics.slice(0,8).map(item =>
       `<li>${escapeHtml((state.detail?.cards || []).find(card => card.id === item.id)?.title || item.id)} · ${item.studentCount} students</li>`).join('')}</ul>
       <p class="muted">Topic labels are model-generated. Evidence includes MCP calls and student-imported prompts.</p></details>` : ''}
-    ${state.account.role !== 'sample' ? '<button class="button secondary" id="run-dream">Refresh synthesis</button>' : ''}</section>`}`;
+    ${['instructor','operator'].includes(state.account.role) ? '<button class="button secondary" id="run-dream">Refresh synthesis</button>' : ''}</section>`}`;
   document.querySelector('#preview-toggle')?.addEventListener('click', () => { state.preview = !state.preview; renderActivity(); });
   document.querySelector('#run-dream')?.addEventListener('click', async () => {
     try { await api(`/api/courses/${encodeURIComponent(state.courseId)}/dream`, { method: 'POST' }); await loadCourse(); }
