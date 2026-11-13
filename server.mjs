@@ -18,7 +18,8 @@ import { recordMcpCall, dreamCourse, courseInsights, studentInsights, importChat
 import { askKelvin } from './ask-kelvin.mjs';
 import { accountById, completeLogin, createOAuthProvider, loginPage } from './oauth.mjs';
 import { professors, studentForEmail, switchStudentProfessor, registerProfessor, signInProfessor, makeSession, sessionAccount, revokeSession,
-  courses, courseById, createCourse, courseFiles, fileMetadata, addCourseFile, recordUsage, studentSummary, courseAnalytics, stockCards } from './demo.mjs';
+  courses, courseById, createCourse, courseFiles, courseFileVersions, fileMetadata, addCourseFile, recordUsage,
+  studentSummary, courseAnalytics, stockCards } from './demo.mjs';
 
 const { cards, skills } = loadContent();
 const port = Number(process.env.PORT || 3337);
@@ -293,6 +294,12 @@ app.get('/api/courses/:courseId/skills/:skillId', demoAccount, requireCourse, as
 app.get('/api/courses/:courseId/files/:fileId', demoAccount, requireCourse, async (req, res) => {
   const file = (await courseFiles(req.course.id)).find(f => f.id === req.params.fileId);
   return file ? res.json({ ...fileMetadata(file), content: file.text }) : res.status(404).json({ error: 'File unavailable' });
+});
+app.get('/api/courses/:courseId/files/:fileId/versions', demoAccount, requireCourse, async (req, res) => {
+  if (!['instructor','operator'].includes(req.demoAccount.role)) return res.status(403).json({ error: 'Instructor account required' });
+  const current = (await courseFiles(req.course.id)).find(f => f.id === req.params.fileId);
+  return current ? res.json((await courseFileVersions(req.course.id, current.name)).map(fileMetadata)) :
+    res.status(404).json({ error: 'File unavailable' });
 });
 app.post('/api/courses/:courseId/files', demoAccount, requireCourse, async (req, res) => {
   if (!['instructor','operator'].includes(req.demoAccount.role)) return res.status(403).json({ error: 'Instructor or operator account required' });

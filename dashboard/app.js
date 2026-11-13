@@ -226,6 +226,8 @@ async function openItem(kind, id) {
   const course = encodeURIComponent(state.courseId), item = encodeURIComponent(id);
   const path = kind === 'file' ? `files/${item}` : kind === 'skill' ? `skills/${item}` : `cards/${item}`;
   const data = state.account.role === 'sample' ? await api(`/api/public-content/${path}`, { auth: false }) : await api(`/api/courses/${course}/${path}`);
+  if (kind === 'file' && ['instructor','operator'].includes(state.account.role))
+    data.versions = await api(`/api/courses/${course}/files/${item}/versions`).catch(() => []);
   state.selected = data;
   renderContent();
 }
@@ -242,7 +244,8 @@ function renderContent() {
       <label class="search-label">Find content<input id="content-search" type="search" value="${escapeHtml(state.query)}" placeholder="Search this category"></label>
       <div class="content-items">${shown.length ? shown.map(item => `<button class="content-item" data-item="${escapeHtml(item.id)}" data-kind="${item.kind}"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.description || '')}</span></button>`).join('') : '<p class="muted">No items match this search.</p>'}</div></section>
     <section class="panel content-preview"><h2>${escapeHtml(state.selected?.title || 'Choose an item')}</h2><p class="muted">${escapeHtml(state.selected?.description || 'Open a card or file to read the full content.')}</p>
-    ${state.selected ? `<pre id="content-text"></pre>${['instructor','operator'].includes(state.account.role) && !state.account.demoProfessor &&
+    ${state.selected ? `<pre id="content-text"></pre>${state.selected.versions?.length > 1 ? `<details><summary>File versions</summary><ul class="simple-list">${state.selected.versions.map(v =>
+      `<li>v${v.version} · ${escapeHtml(new Date(v.createdAt).toLocaleDateString())}</li>`).join('')}</ul></details>` : ''}${['instructor','operator'].includes(state.account.role) && !state.account.demoProfessor &&
       (state.account.role === 'operator' || state.detail?.course?.professorId === state.account.id) ? '<button id="edit-item" class="button secondary">Edit this item</button>' : ''}` : ''}</section></div>`;
   if (state.selected) document.querySelector('#content-text').textContent = state.selected.content;
   document.querySelector('#edit-item')?.addEventListener('click', () => editSelected());

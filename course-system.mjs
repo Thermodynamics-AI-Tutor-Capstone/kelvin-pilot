@@ -25,11 +25,20 @@ export async function contentForCourse(courseId) {
       body: '# ME 300 Engineering Thermodynamics concept template\n\nCore concepts: systems and control volumes, properties, ideal gases, phase change, energy, heat and work, first-law and second-law analysis, entropy, and engineering cycles. The teaching cards were derived from Dr. O’Connor’s real Summer 2023 course. This template does not contain a current section schedule, grades, or assignments.' });
   }
   for (const revision of await courseRevisions(courseId)) {
+    if (!['card','skill'].includes(revision.kind)) continue;
     const map = revision.kind === 'skill' ? skills : cards;
     if (revision.action === 'delete') map.delete(revision.itemId);
     else map.set(revision.itemId, { ...map.get(revision.itemId), ...revision.value });
   }
   return { cards, skills, version: await courseVersion(courseId) };
+}
+export async function noteCourseChange(courseId, actorId, kind, itemId, value, reason) {
+  return mutateState(key, {}, data => {
+    const revisions = data[courseId] ||= [];
+    const entry = { id: randomUUID(), courseId, version: (revisions.at(-1)?.version || 0) + 1,
+      at: new Date().toISOString(), actorId, kind, itemId, action: 'upsert', value, reason };
+    revisions.push(entry); return entry;
+  });
 }
 export async function reviseCourseItem(courseId, account, course, { kind, itemId, value, reason, expectedVersion }) {
   if (!canEditCourse(account, course)) throw new Error('Editing is unavailable for this course');
@@ -80,6 +89,7 @@ export async function saveCourseSchedule(courseId, account, course, input) {
   const value = { term, startDate: date, weekLengthDays: 7, modules: ['M1','M2','M3','M4','M5','M6','M7','M8'],
     updatedAt: new Date().toISOString(), updatedBy: account.id };
   await mutateState(scheduleKey, {}, data => { data[courseId] = value; });
+  await noteCourseChange(courseId, account.id, 'schedule', 'term-schedule', value, 'Updated term schedule');
   return value;
 }
 export function coursePosition(schedule, at = new Date()) {

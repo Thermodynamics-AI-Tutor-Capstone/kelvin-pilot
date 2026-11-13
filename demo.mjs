@@ -4,6 +4,7 @@ import { mutateState, readState, addStoredUsage, storedUsage, storedEvents } fro
 import { loadContent, metadata } from './content.mjs';
 import lectures from './oconnor-lectures.json' with { type: 'json' };
 import documents from './oconnor-documents.json' with { type: 'json' };
+import { noteCourseChange } from './course-system.mjs';
 
 const accountsKey = 'accounts.json';
 const coursesKey = 'courses.json';
@@ -122,7 +123,7 @@ export async function courseFiles(courseId) {
     size: Buffer.byteLength(f.text), createdAt: '2023-08-11T00:00:00.000Z', version: 1, sourceTerm: 'Summer 2023' })), ...stored] : stored;
 }
 export async function courseFileVersions(courseId, name) { return (await readState(filesKey, [])).filter(f => f.courseId === courseId && f.name === name); }
-export const fileMetadata = f => ({ id: f.id, name: f.name, mimeType: f.mimeType, size: f.size, createdAt: f.createdAt,
+export const fileMetadata = f => ({ id: f.id, name: f.name, title: f.name, kind: 'file', mimeType: f.mimeType, size: f.size, createdAt: f.createdAt,
   version: f.version || 1, supersedes: f.supersedes || null, sourcePath: f.sourcePath || null, sourceTerm: f.sourceTerm || null,
   excerpt: f.text.slice(0, 180) });
 export async function addCourseFile(professorId, courseId, nameInput, mimeType, base64) {
@@ -164,6 +165,9 @@ export async function addCourseFile(professorId, courseId, nameInput, mimeType, 
     file.version = earlier.length + 1;
     data.push(file);
   });
+  await noteCourseChange(courseId, professorId, 'file', file.id,
+    { name: file.name, version: file.version, size: file.size, supersedes: file.supersedes || null },
+    `Uploaded ${file.name} version ${file.version}`);
   return fileMetadata(file);
 }
 export async function recordUsage(event) { return addStoredUsage(event); }
