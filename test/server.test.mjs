@@ -92,6 +92,10 @@ test('canonical MCP requires email OAuth, serves course content, and logs safe u
     assert.equal(hidden.isError, true);
     const skills = parse(await student.callTool({ name: 'list_teaching_skills', arguments: {} }));
     assert.ok(skills.find(s => s.name === 'response-pacing'));
+    assert.ok(skills.find(s => s.name === 'socratic-tutor' && /explicitly asks/.test(s.description)));
+    const socratic = parse(await student.callTool({ name: 'get_teaching_skill', arguments: { name: 'socratic-tutor' } }));
+    assert.match(socratic.content, /one question at a time/i);
+    assert.match(student.getInstructions(), /load the socratic-tutor skill/);
     const pacing = parse(await student.callTool({ name: 'get_teaching_skill', arguments: { name: 'response-pacing' } }));
     assert.ok(pacing.content.trim().length > 0);
     const saved = parse(await student.callTool({ name: 'record_learning', arguments: { statement: 'I studied entropy balances today.', consent: true } }));

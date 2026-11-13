@@ -54,7 +54,7 @@ async function makeMcp(user) {
   };
   const mcp = new McpServer({ name: 'kelvin-thermodynamics-me300', title: 'Kelvin: Penn State ME 300 Engineering Thermodynamics', version: '0.1.0' }, {
     capabilities: { tools: {} },
-    instructions: 'Kelvin provides real Penn State ME 300 Engineering Thermodynamics course content from Dr. Jacqueline O’Connor’s Summer 2023 Canvas section. Use it as the course reference for substantive thermodynamics questions: call course_map once per conversation, then search_course and get_card for the relevant topic or misconception before answering. Use teaching skills when they fit the task. For dates, grading, and policies, identify the Summer 2023 term and check the student’s current Canvas section. Do not save a learning reflection unless the student explicitly asks.'
+    instructions: 'Kelvin provides real Penn State ME 300 Engineering Thermodynamics course content from Dr. Jacqueline O’Connor’s Summer 2023 Canvas section. Use it as the course reference for substantive thermodynamics questions: call course_map once per conversation, then search_course and get_card for the relevant topic or misconception before answering. When a student explicitly asks to be taught, tutored, quizzed, or drilled to mastery, load the socratic-tutor skill with get_teaching_skill and use the course cards as subject evidence. For one-off explanations, answer normally. For dates, grading, and policies, identify the Summer 2023 term and check the student’s current Canvas section. Do not save a learning reflection unless the student explicitly asks.'
   });
   const publicSecurity = user.role === 'anonymous' ? { _meta: { securitySchemes: [{ type: 'noauth' }] } } : {};
   if (user.role !== 'anonymous') mcp.registerTool('my_account', { description: 'Show the Kelvin email, course, and role attached to this connector.' },
@@ -87,9 +87,9 @@ async function makeMcp(user) {
         related: { misconceptions: card.misconceptions || [], topics: card.topics || [], equations: card.equations || [] },
         sources: card.sources || [], content: card.body.slice(0, 16000) });
     });
-  mcp.registerTool('list_teaching_skills', { title: 'Thermodynamics tutoring approaches', description: 'When tutoring a thermodynamics problem, list the available ME 300 teaching approaches, including property-table work, control-volume energy balances, next-step hints, and misconception repair. Then load the useful one with get_teaching_skill.', ...publicSecurity }, () =>
+  mcp.registerTool('list_teaching_skills', { title: 'Thermodynamics tutoring approaches', description: 'List ME 300 teaching approaches, including property tables, energy balances, next-step hints, misconception repair, and Jane Street’s socratic-tutor for explicit teach-me or quiz-me requests. Then load the useful one with get_teaching_skill.', ...publicSecurity }, () =>
     result([...skills].map(([name, s]) => ({ name, description: s.description }))));
-  mcp.registerTool('get_teaching_skill', { title: 'Read a thermodynamics tutoring approach', description: 'Read a named ME 300 thermodynamics tutoring procedure when helping with property tables, control-volume energy balances, step-by-step reasoning, or a misconception. Call list_teaching_skills first to choose a valid name.', ...publicSecurity,
+  mcp.registerTool('get_teaching_skill', { title: 'Read a thermodynamics tutoring approach', description: 'Read a named ME 300 teaching procedure. For a student who explicitly asks to be taught, tutored, quizzed, or drilled to mastery, load socratic-tutor; it runs a multi-turn diagnostic and asks one question at a time. Do not use it for a one-off explanation. Call list_teaching_skills to see valid names.', ...publicSecurity,
     inputSchema: { name: z.string().max(80) } }, ({ name }) => {
       const skill = skills.get(name);
       return skill ? result({ name, description: skill.description, content: skill.body }) : error('Skill not found');
