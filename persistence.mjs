@@ -4,14 +4,21 @@ import { randomUUID } from 'node:crypto';
 
 const dataDir = process.env.KELVIN_MCP_DATA_DIR || join(import.meta.dirname, 'data');
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+const databaseConfigured = Boolean(databaseUrl || process.env.PGHOST);
 let pool;
 let schemaReady;
 
 async function database() {
-  if (!databaseUrl) return null;
+  if (!databaseConfigured) {
+    if (process.env.KELVIN_REQUIRE_DATABASE === '1') throw new Error('PostgreSQL is required but not configured');
+    return null;
+  }
   if (!pool) {
     const { Pool } = await import('pg');
-    pool = new Pool({ connectionString: databaseUrl, max: 3, idleTimeoutMillis: 10000 });
+    pool = new Pool({ ...(databaseUrl ? { connectionString: databaseUrl } : {
+      host: process.env.PGHOST, port: Number(process.env.PGPORT || 5432), user: process.env.PGUSER,
+      password: process.env.PGPASSWORD || (process.env.PGPASSWORD_FILE ? readFileSync(process.env.PGPASSWORD_FILE, 'utf8').trim() : undefined),
+      database: process.env.PGDATABASE }), max: 5, idleTimeoutMillis: 10000 });
   }
   if (!schemaReady) schemaReady = (async () => {
     await pool.query('CREATE TABLE IF NOT EXISTS kelvin_state (key text PRIMARY KEY, value jsonb NOT NULL)');
@@ -137,3 +144,7 @@ export async function deleteStoredEvents(studentId) {
 }
 
 export async function closePersistence() { if (pool) await pool.end(); }
+export async function persistenceReady() {
+  try { const db = await database(); if (!db) return false; await db.query('SELECT 1'); return true; }
+  catch { return false; }
+}

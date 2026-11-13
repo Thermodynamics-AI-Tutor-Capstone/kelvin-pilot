@@ -12,6 +12,8 @@ import { loadContent, metadata, provenance, searchCards } from './content.mjs';
 import { addEvent, allEvents } from './store.mjs';
 import { classify } from './classify.mjs';
 import { writeRequestLog } from './request-log.mjs';
+import { persistenceReady } from './persistence.mjs';
+import { modelReady, modelName } from './model-client.mjs';
 import { contentForCourse, courseVersion, courseRevisions, reviseCourseItem, restoreCourseVersion, courseSchedule, saveCourseSchedule,
   coursePosition, canEditCourse, sourceInventory } from './course-system.mjs';
 import { recordMcpCall, dreamCourse, courseInsights, studentInsights, importChatExport, studentImports, mcpCallEvents } from './learning-data.mjs';
@@ -23,7 +25,7 @@ import { professors, studentForEmail, switchStudentProfessor, registerProfessor,
 
 const { cards, skills } = loadContent();
 const port = Number(process.env.PORT || 3337);
-const origin = process.env.KELVIN_PUBLIC_ORIGIN || 'https://kelvin-mcp.vercel.app';
+const origin = process.env.KELVIN_PUBLIC_ORIGIN || 'https://kelvin.me.psu.edu';
 const resourceUrl = new URL('/mcp', origin);
 const accountResourceUrl = new URL('/mcp/account', origin);
 const dashboardResourceUrl = new URL('/dashboard-data', origin);
@@ -116,7 +118,7 @@ async function makeMcp(user) {
         catch (e) { return error(e.message); }
       });
     }
-    mcp.registerTool('record_learning', { description: 'Save a short learning reflection and classify its topics with DeepSeek. Only call after the student explicitly asks to save what they worked on. Misconception labels are tentative, not diagnoses.',
+    mcp.registerTool('record_learning', { description: 'Save a short learning reflection and classify its topics with the configured Kelvin model. Only call after the student explicitly asks to save what they worked on. Misconception labels are tentative, not diagnoses.',
       inputSchema: { statement: z.string().min(10).max(1000), consent: z.literal(true) } }, async ({ statement }) => {
         try {
           const labels = await classify(statement, cards);
@@ -180,7 +182,7 @@ async function handleMcp(req, res, user) {
 }
 
 const app = express();
-app.set('trust proxy', 'loopback');
+app.set('trust proxy', process.env.KELVIN_TRUST_PROXY_HOPS ? Number(process.env.KELVIN_TRUST_PROXY_HOPS) : 'loopback');
 app.use((req, res, next) => {
   const started = Date.now();
   const requestId = /^[a-f0-9-]{36}$/.test(String(req.headers['x-kelvin-request-id'] || ''))
@@ -207,6 +209,10 @@ app.use((req, res, next) => {
 app.use(['/mcp', '/mcp/account'], express.json({ limit: '32kb', type: 'application/json' }));
 app.use('/api', express.json({ limit: '3mb' }));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'kelvin-mcp', cards: cards.size }));
+app.get('/ready', async (_req, res) => {
+  const [database, model] = await Promise.all([persistenceReady(), modelReady()]);
+  return res.status(database && model ? 200 : 503).json({ ready: database && model, database, model, modelName: modelName() });
+});
 app.get('/dashboard', (_req, res) => res.type('html').send(dashboardHtml));
 app.get('/dashboard/app.js', (_req, res) => res.type('js').send(dashboardJs));
 app.get('/dashboard/style.css', (_req, res) => res.type('css').send(dashboardCss));
@@ -395,5 +401,6 @@ app.all('/mcp', requireBearerAuth({ verifier: oauth, requiredScopes: ['mcp:tools
 export default app;
 if (process.env.VERCEL !== '1') {
   const server = createServer(app);
-  server.listen(port, '127.0.0.1', () => console.log(`Kelvin MCP listening on 127.0.0.1:${port}`));
+  const host = process.env.KELVIN_BIND_HOST || '127.0.0.1';
+  server.listen(port, host, () => console.log(`Kelvin MCP listening on ${host}:${port}`));
 }

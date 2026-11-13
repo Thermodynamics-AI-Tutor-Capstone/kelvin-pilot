@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { readState, mutateState, addStoredUsage, storedUsage, storedEvents, addRpcEvent, storedRpcEvents } from './persistence.mjs';
 import { classify } from './classify.mjs';
+import { generateText, modelConfigured } from './model-client.mjs';
 
 const insightKey = 'learning-insights.json';
 const importKey = 'chat-imports.json';
@@ -42,10 +43,10 @@ export async function dreamCourse(courseId, cards) {
     const text = [...own.filter(e => e.tool === 'ask_kelvin' || e.tool === 'search_course').map(e => e.arguments?.question || e.arguments?.query),
       ...imported].filter(Boolean).slice(-12).join('\n');
     let labels = { topics: [], misconceptions: [], summary: '' }, modelStatus = 'no-questions';
-    if (text) try { labels = await classify(text.slice(0, 3000), cards); modelStatus = 'deepseek'; } catch { modelStatus = 'unavailable'; }
+    if (text) try { labels = await classify(text.slice(0, 3000), cards); modelStatus = 'classified'; } catch { modelStatus = 'unavailable'; }
     studentResults[id] = { id: randomUUID(), generatedAt: new Date().toISOString(), modelStatus, ...labels,
       evidenceEventIds: own.slice(-20).map(e => e.id), importIds: imports.filter(e => e.studentId === id).map(e => e.id), sourceCount: own.length + imported.length,
-      statement: modelStatus === 'deepseek' ? labels.summary : 'No model summary available.' };
+      statement: modelStatus === 'classified' ? labels.summary : 'No model summary available.' };
   }
   const counts = new Map();
   for (const event of usage) if (event.cardId) {
@@ -70,19 +71,15 @@ export async function dreamCourse(courseId, cards) {
       'There is not enough distinct-student evidence yet for a class trend.', conclusionType: 'deterministic',
     evidenceEventIds: [...trends.flatMap(t => t.evidenceEventIds), ...questionTopics.flatMap(t => t.evidenceEventIds)].slice(-60),
     evidenceImportIds: questionTopics.flatMap(t => t.importIds).slice(-60) };
-  if ((trends.length || questionTopics.length) && process.env.DEEPSEEK_API_KEY) try {
-    const base = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
-    const url = base.endsWith('/chat/completions') ? base : `${base}/chat/completions`;
-    const response = await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`, 'content-type': 'application/json' },
-      signal: AbortSignal.timeout(12000), body: JSON.stringify({ model: process.env.DEEPSEEK_MODEL || 'deepseek-flash', temperature: 0,
-        messages: [{ role: 'system', content: 'Given only aggregate course usage counts, suggest one concrete teaching action in one sentence. Do not infer student ability or identity. Do not claim a misconception unless evidence explicitly shows one.' },
-          { role: 'user', content: JSON.stringify({ trends: trends.slice(0, 8).map(({ evidenceEventIds, ...item }) => item),
-            questionTopics: questionTopics.slice(0, 8).map(({ evidenceEventIds, importIds, ...item }) => item) }) }] }) });
-    if (response.ok) {
-      const json = await response.json();
-      result.suggestion = String(json.choices?.[0]?.message?.content || '').slice(0, 500);
-      result.suggestionType = 'model-generated';
-    }
+  if ((trends.length || questionTopics.length) && modelConfigured()) try {
+    const response = await generateText([
+      { role: 'system', content: 'Given only aggregate course usage counts, suggest one concrete teaching action in one sentence. Do not infer student ability or identity. Do not claim a misconception unless evidence explicitly shows one.' },
+      { role: 'user', content: JSON.stringify({ trends: trends.slice(0, 8).map(({ evidenceEventIds, ...item }) => item),
+        questionTopics: questionTopics.slice(0, 8).map(({ evidenceEventIds, importIds, ...item }) => item) }) }
+    ]);
+    result.suggestion = response.content.slice(0, 500);
+    result.suggestionType = 'model-generated';
+    result.suggestionModel = response.model;
   } catch (error) { console.error('Course synthesis model unavailable:', error.message); }
   await mutateState(insightKey, {}, data => { data.students ||= {}; data.courses ||= {}; Object.assign(data.students, studentResults); data.courses[courseId] = result; });
   return { course: result, studentsProcessed: students.length };

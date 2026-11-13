@@ -1,0 +1,13 @@
+.git
+.github
+.vercel
+.env
+.env.*
+!.env.example
+secrets
+data
+node_modules
+*.log
+test
+dashboard/api
+dashboard/vercel.json

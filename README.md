@@ -1,37 +1,33 @@
-# Kelvin MCP
+# Kelvin pilot for the GB10
 
-Penn State ME 300 Engineering Thermodynamics course tools and opt-in learning records.
+This is the GB10 deployment repository for Kelvin. It was copied from the [Vercel demo](https://github.com/Thermodynamics-AI-Tutor-Capstone/kelvin-mcp), but it has its own code, database, model connection, and release process. Changes here do not deploy the demo.
 
-- Student connector: `https://kelvin-mcp.vercel.app/mcp` (first connection asks for PSU email and professor's course)
-- Older account connector: `https://kelvin-mcp.vercel.app/mcp/account` (still supported)
-- Student and professor dashboard: `https://kelvin-mcp.vercel.app/dashboard`
+Kelvin serves the student MCP at `https://kelvin.me.psu.edu/mcp` and the student and professor dashboard at `https://kelvin.me.psu.edu/dashboard`. Gary's NGINX container handles HTTPS and forwards requests to the Kelvin container. Docker Compose runs Kelvin and a private PostgreSQL database. Kelvin sends model requests to the GB10's shared Ollama service at `http://ollama:11434`. Qdrant is not needed for this version.
 
-The MCP, OAuth runtime, and dashboard run in one Vercel project. A Neon Postgres database, provisioned through Vercel, stores accounts, OAuth state, course uploads, learning records, and aggregated usage. Nothing in the request path depends on Lance's Mac mini.
+## Bring it up on the GB10
 
-## Demo flow
+1. Clone this private repository onto the GB10.
+2. Ask Gary for the name of the Docker network shared by NGINX and Ollama, and ask him to preload **`qwen3:8b`** in Ollama. The model tag can be changed in `.env`.
+3. Run `./scripts/init-gb10.sh`. It creates `.env` and a random database password in `secrets/db_password.txt`; neither file belongs in Git.
+4. Set `GB10_SHARED_NETWORK` in `.env` to the network name from Gary. Run `./scripts/preflight-gb10.sh`.
+5. Run `docker compose up -d --build`, then `docker compose ps`.
+6. Have NGINX forward `kelvin.me.psu.edu` to `http://kelvin-pilot:3337` on that shared network. [GB10 handoff details](docs/GB10-HANDOFF.md) include the required proxy headers and timeouts.
+7. Check `https://kelvin.me.psu.edu/ready`. It should report `ready: true`, with both `database` and `model` true.
 
-On their first Claude connection, students enter a `@psu.edu` email and choose a professor's course in Kelvin's MCP sign-in flow. Kelvin remembers the choice and reuses the same student account on later connections. Students can ask Claude to use `list_professors` and `switch_professor` to change their active course; this keeps their account and earlier reflections. The student dashboard asks only for their email and does not offer a professor selector. Email ownership is **not verified**; use test data only. Existing password-protected student accounts remain separate and do not become available through email-only sign-in.
+The database is stored in the `postgres_data` Docker volume. It starts empty and does **not** copy accounts or student records from the Vercel demo. There is no exposed database port. Application request logs go to Docker logs; MCP event records go to PostgreSQL.
 
-Professors create an account in the dashboard with a PSU email and password. Each professor gets a stock ME 300 course and can add more courses. Uploads are scoped to one course; PDF, TXT, MD, and CSV files up to 2 MB are accepted. Kelvin stores the extracted text, not the original file binary. The MCP makes that text available to students in the course through `list_course_files`, `search_course`, and `get_course_file`.
+## Updating and operating
 
-There are now two reference courses. `demo-me300` is a concept template. `oconnor-me300-su23` is Dr. Jacqueline O’Connor’s archived Summer 2023 section. It includes transcripts of 76 lecture decks, the syllabus, and ten homework prompts. Its 140-file Canvas source inventory is available to instructors in the dashboard; assessment solutions are listed there but are not sent through student MCP tools. The published student cards come from the real course material and remain marked with their source and preparation status. Instructor courses start with the concept template, then can override cards and teaching skills. Every edit creates a numbered course revision with the editor, time, and reason, and instructors can restore an earlier revision. Uploading a file with the same name creates a new file version.
+Pull the desired commit and run `docker compose up -d --build`. The database volume stays in place. `docker compose logs -f kelvin` shows application and request logs. Back up the database before significant updates:
 
-Instructors can set a term start date. `course_map`, `search_course`, and `ask_kelvin` then include the current week and module, bringing current material forward while keeping earlier topics available for review. Dates and grading in the archived section stay labeled Summer 2023.
+```sh
+docker compose exec -T db pg_dump -U kelvin -d kelvin -Fc > kelvin-backup.dump
+```
 
-The MCP supports two ways to work. A client can browse `course_map` → `search_course` → `get_card`, or send a question to `ask_kelvin` for a grounded response from DeepSeek. The question-first tool returns the source card IDs and falls back to those cards when the model is unavailable. Qwen can replace the model backend later without changing the tool interface.
+GitHub Actions runs the Node tests, validates Compose, and builds the image. It does not deploy to the GB10; Gary or the operator controls that host.
 
-The professor dashboard shows 14-day request and reflection timelines and compares topic, misconception, question, and content use between the last seven days and the seven days before. It never exposes student names, emails, or raw questions. Course activity appears only after five distinct students contribute; each daily point and category also requires five distinct students. A clearly labeled synthetic preview is available for walkthroughs before a course has enough activity. The student dashboard shows that student's saved reflections and course content.
+## Current pilot boundary
 
-Each MCP request is recorded in Neon with a schema version, student/account ID, course ID and version, client family, method, tool arguments, response status, and duration. These events are the evidence layer. The professor can run a synthesis that labels individual students’ recent questions with DeepSeek and builds class trends only when at least five students contribute. Student summaries show up only in that student’s dashboard. Class conclusions link to aggregate counts and source event IDs. Model suggestions are labeled as suggestions. A student may import their own ChatGPT or Claude conversation JSON, or Gemini My Activity JSON, to add prompts to the learning summary; exports vary, so the importer reports the count it recognized.
+The copied app still uses the demo's email-only student flow. Email ownership is not verified, so this build is for setup and controlled testing until Penn State provides an approved identity path. The repository includes the real ME 300 course cards and the student-facing transcripts already used by the demo. Course files, accounts, and usage recorded on the GB10 stay in its own database.
 
-The demo has student, instructor, researcher, and operator roles. Students use email-only sign-in. Instructors use a password and edit their own courses. Researchers see aggregate course trends. Operators can edit the shared reference courses. Provision the latter two roles with `node provision-role.mjs <operator|researcher> <psu-email> <name>` from an environment connected to the production database; the command generates a password once.
-
-When a professor's course has fewer than five contributing students, the dashboard opens with labeled sample charts. These numbers are illustrative browser-side fixtures, never stored as student events or mixed into live analytics. A sample professor account can browse the real stock course content but cannot create courses or upload files.
-
-## Development
-
-Run `npm ci` and `npm test`. The test suite uses local temporary files. Production uses `DATABASE_URL`. The `agent/` folder contains the course cards and selected teaching skills bundled with the function.
-
-The `kelvin-mcp` Vercel project builds this repository root and serves all routes. Production needs `DATABASE_URL` and `DEEPSEEK_API_KEY` for persistent accounts and reflection classification.
-
-Luke has repository admin access. The GitHub Actions workflow runs tests and deploys the single Vercel project on every push to `main`, regardless of which teammate pushed. It uses the `VERCEL_TOKEN` repository Actions secret and `CI_DEPLOY_ENABLED=true` repository variable. Vercel's Hobby plan cannot connect a private organization repository through its built-in Git integration, so the workflow uploads the build with Vercel CLI. Keep the token, database credentials, and student records out of Git.
+The configured default model is [Ollama `qwen3:8b`](https://ollama.com/library/qwen3%3A8b). Kelvin uses it for question-first tutoring, reflection classification, and course synthesis. Direct course browsing still works if the model is unavailable, while `/ready` reports that the full service is not ready.

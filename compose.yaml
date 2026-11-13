@@ -1,0 +1,86 @@
+name: kelvin-pilot
+
+services:
+  kelvin:
+    build: .
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NODE_ENV: production
+      PORT: "3337"
+      KELVIN_BIND_HOST: 0.0.0.0
+      KELVIN_PUBLIC_ORIGIN: https://kelvin.me.psu.edu
+      KELVIN_DASHBOARD_ORIGIN: https://kelvin.me.psu.edu
+      KELVIN_TRUST_PROXY_HOPS: "1"
+      KELVIN_REQUIRE_DATABASE: "1"
+      KELVIN_LOG_TO_STDOUT_ONLY: "1"
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: kelvin
+      PGDATABASE: kelvin
+      PGPASSWORD_FILE: /run/secrets/kelvin_db_password
+      MODEL_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
+      MODEL_TIMEOUT_MS: ${MODEL_TIMEOUT_MS:-60000}
+    secrets:
+      - kelvin_db_password
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "3337"
+    networks:
+      private: {}
+      shared:
+        aliases:
+          - kelvin-pilot
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3337/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 8s
+      start_period: 90s
+      retries: 3
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kelvin
+      POSTGRES_DB: kelvin
+      POSTGRES_PASSWORD_FILE: /run/secrets/kelvin_db_password
+    secrets:
+      - kelvin_db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kelvin -d kelvin"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  private:
+    internal: true
+  shared:
+    external: true
+    name: ${GB10_SHARED_NETWORK:?Set GB10_SHARED_NETWORK in .env}
+
+volumes:
+  postgres_data:
+
+secrets:
+  kelvin_db_password:
+    file: ./secrets/db_password.txt
