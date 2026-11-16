@@ -36,8 +36,8 @@ services:
     expose:
       - "3337"
     networks:
-      kelvin-private: {}
-      ai-network: {}
+      - kelvin-private
+      - ai-network
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3337/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
