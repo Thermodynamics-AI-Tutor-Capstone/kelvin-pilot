@@ -67,6 +67,9 @@ test('canonical MCP requires email OAuth, serves course content, and logs safe u
   const child = spawn(process.execPath, ['server.mjs'], { cwd: import.meta.dirname + '/..', env });
   try {
     await ready(`${base}/health`);
+    const home = await fetch(base, { redirect: 'manual' });
+    assert.equal(home.status, 302);
+    assert.equal(home.headers.get('location'), '/dashboard');
     const denied = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     assert.equal(denied.status, 401);
     assert.match(denied.headers.get('www-authenticate'), /resource_metadata/);
