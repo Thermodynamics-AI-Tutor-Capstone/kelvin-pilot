@@ -2,7 +2,7 @@
 
 This is the GB10 deployment repository for Kelvin. It was copied from the [Vercel demo](https://github.com/Thermodynamics-AI-Tutor-Capstone/kelvin-mcp), but it has its own code, database, model connection, and release process. Changes here do not deploy the demo.
 
-Kelvin serves the student MCP at `https://kelvin.me.psu.edu/mcp` and the student and professor dashboard at `https://kelvin.me.psu.edu/dashboard`. Gary's NGINX container handles HTTPS and forwards requests to the Kelvin container. Docker Compose runs Kelvin and a private PostgreSQL database. Kelvin sends model requests to the GB10's shared Ollama service at `http://ollama:11434`. Qdrant is not needed for this version.
+Kelvin serves a public landing page at `https://kelvin.me.psu.edu/`, the student MCP at `https://kelvin.me.psu.edu/mcp`, and the student and professor dashboard at `https://kelvin.me.psu.edu/dashboard`. Gary's NGINX container handles HTTPS and forwards requests to the Kelvin container. Docker Compose runs Kelvin and a private PostgreSQL database. Kelvin sends model requests to the GB10's shared Ollama service at `http://ollama:11434`. Qdrant is not needed for this version.
 
 ## Bring it up on the GB10
 
@@ -11,7 +11,7 @@ Kelvin serves the student MCP at `https://kelvin.me.psu.edu/mcp` and the student
 3. Run `./scripts/init-gb10.sh`. It creates `.env` and a random database password in `secrets/db_password.txt`; neither file belongs in Git.
 4. Run `./scripts/preflight-gb10.sh`.
 5. Run `docker compose up -d --build`, then `docker compose ps`.
-6. Have NGINX forward `kelvin.me.psu.edu` to the Kelvin service on port 3337. The Node app serves both `/dashboard` and `/mcp` on that port; `/` redirects to `/dashboard`. [GB10 handoff details](docs/GB10-HANDOFF.md) cover the proxy settings.
+6. Have NGINX forward `kelvin.me.psu.edu` to the Kelvin service on port 3337. The Node app serves the landing page at `/`, the dashboard at `/dashboard`, and the connector at `/mcp`. [GB10 handoff details](docs/GB10-HANDOFF.md) cover the proxy settings.
 7. Install a TLS certificate valid for `kelvin.me.psu.edu` and redirect HTTP to HTTPS. The MCP OAuth endpoints advertise HTTPS and require a working certificate for clients to connect.
 8. Check `https://kelvin.me.psu.edu/ready`. It should report `ready: true`, with both `database` and `model` true.
 
