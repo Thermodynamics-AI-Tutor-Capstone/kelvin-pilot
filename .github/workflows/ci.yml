@@ -23,7 +23,8 @@ jobs:
       - name: Validate Compose configuration
         run: |
           ./scripts/init-gb10.sh
-          sed -i 's/^GB10_SHARED_NETWORK=.*/GB10_SHARED_NETWORK=gb10-ci/' .env
+          docker network create ai-network
+          ./scripts/preflight-gb10.sh
           docker compose config --quiet
       - name: Build pilot image
         run: docker build -t kelvin-pilot:ci .

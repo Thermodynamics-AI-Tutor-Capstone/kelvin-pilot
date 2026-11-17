@@ -208,6 +208,7 @@ app.use((req, res, next) => {
 });
 app.use(['/mcp', '/mcp/account'], express.json({ limit: '32kb', type: 'application/json' }));
 app.use('/api', express.json({ limit: '3mb' }));
+app.get('/', (_req, res) => res.redirect(302, '/dashboard'));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'kelvin-mcp', cards: cards.size }));
 app.get('/ready', async (_req, res) => {
   const [database, model] = await Promise.all([persistenceReady(), modelReady()]);

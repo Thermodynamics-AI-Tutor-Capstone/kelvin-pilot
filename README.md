@@ -6,13 +6,14 @@ Kelvin serves the student MCP at `https://kelvin.me.psu.edu/mcp` and the student
 
 ## Bring it up on the GB10
 
-1. Clone this private repository onto the GB10.
-2. Ask Gary for the name of the Docker network shared by NGINX and Ollama, and ask him to preload **`qwen3:8b`** in Ollama. The model tag can be changed in `.env`.
+1. Clone this repository into `/opt/docker/kelvin` on the GB10.
+2. Confirm that the shared `ai-network` Docker network exists and that Ollama has **`qwen3:8b`** loaded. The model tag can be changed in `.env`.
 3. Run `./scripts/init-gb10.sh`. It creates `.env` and a random database password in `secrets/db_password.txt`; neither file belongs in Git.
-4. Set `GB10_SHARED_NETWORK` in `.env` to the network name from Gary. Run `./scripts/preflight-gb10.sh`.
+4. Run `./scripts/preflight-gb10.sh`.
 5. Run `docker compose up -d --build`, then `docker compose ps`.
-6. Have NGINX forward `kelvin.me.psu.edu` to `http://kelvin-pilot:3337` on that shared network. [GB10 handoff details](docs/GB10-HANDOFF.md) include the required proxy headers and timeouts.
-7. Check `https://kelvin.me.psu.edu/ready`. It should report `ready: true`, with both `database` and `model` true.
+6. Have NGINX forward `kelvin.me.psu.edu` to the Kelvin service on port 3337. The Node app serves both `/dashboard` and `/mcp` on that port; `/` redirects to `/dashboard`. [GB10 handoff details](docs/GB10-HANDOFF.md) cover the proxy settings.
+7. Install a TLS certificate valid for `kelvin.me.psu.edu` and redirect HTTP to HTTPS. The MCP OAuth endpoints advertise HTTPS and require a working certificate for clients to connect.
+8. Check `https://kelvin.me.psu.edu/ready`. It should report `ready: true`, with both `database` and `model` true.
 
 ### If Kelvin cannot read the database password
 
