@@ -28,7 +28,7 @@ A certificate mismatch blocks the advertised OAuth URLs even if `http://kelvin.m
 curl -fsS https://kelvin.me.psu.edu/ready
 ```
 
-The site root redirects to `/dashboard`. The student connector URL remains `/mcp`; opening `/mcp` directly in a browser is not a dashboard test.
+The site root shows a public Kelvin introduction with a link to `/dashboard`. The student connector URL remains `/mcp`; opening `/mcp` directly in a browser is not a dashboard test.
 
 After `docker compose up -d --build`, check:
 

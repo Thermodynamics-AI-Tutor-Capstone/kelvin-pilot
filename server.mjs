@@ -30,6 +30,8 @@ const resourceUrl = new URL('/mcp', origin);
 const accountResourceUrl = new URL('/mcp/account', origin);
 const dashboardResourceUrl = new URL('/dashboard-data', origin);
 const dashboardOrigin = process.env.KELVIN_DASHBOARD_ORIGIN || origin;
+const landingHtml = readFileSync(new URL('./landing/index.html', import.meta.url));
+const landingCss = readFileSync(new URL('./landing/style.css', import.meta.url));
 const dashboardHtml = readFileSync(new URL('./dashboard/index.html', import.meta.url));
 const dashboardJs = readFileSync(new URL('./dashboard/app.js', import.meta.url));
 const dashboardCss = readFileSync(new URL('./dashboard/style.css', import.meta.url));
@@ -208,7 +210,8 @@ app.use((req, res, next) => {
 });
 app.use(['/mcp', '/mcp/account'], express.json({ limit: '32kb', type: 'application/json' }));
 app.use('/api', express.json({ limit: '3mb' }));
-app.get('/', (_req, res) => res.redirect(302, '/dashboard'));
+app.get('/', (_req, res) => res.type('html').send(landingHtml));
+app.get('/landing/style.css', (_req, res) => res.type('css').send(landingCss));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'kelvin-mcp', cards: cards.size }));
 app.get('/ready', async (_req, res) => {
   const [database, model] = await Promise.all([persistenceReady(), modelReady()]);
