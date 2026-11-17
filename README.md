@@ -14,6 +14,35 @@ Kelvin serves the student MCP at `https://kelvin.me.psu.edu/mcp` and the student
 6. Have NGINX forward `kelvin.me.psu.edu` to `http://kelvin-pilot:3337` on that shared network. [GB10 handoff details](docs/GB10-HANDOFF.md) include the required proxy headers and timeouts.
 7. Check `https://kelvin.me.psu.edu/ready`. It should report `ready: true`, with both `database` and `model` true.
 
+### If Kelvin cannot read the database password
+
+On the GB10, `init-gb10.sh` creates `secrets/db_password.txt` with mode `600`. Docker Compose bind-mounts that file as a secret, but the image runs as the `node` user (UID 1000). On this shared host, UID 1000 belongs to the host's `administrator` account. Do not grant that account access to Kelvin's password file.
+
+If `docker compose ps` leaves Kelvin at `health: starting` or `unhealthy`, check `/ready` inside the container:
+
+```sh
+docker compose exec -T kelvin node -e "fetch('http://127.0.0.1:3337/ready').then(async r => console.log(r.status, await r.text()))"
+```
+
+If it reports `database: false`, check the error without printing the password:
+
+```sh
+docker compose exec -T kelvin node -e "import('./persistence.mjs').then(m => m.storedEvents()).then(() => console.log('DB query OK')).catch(e => { console.error(e.message); process.exitCode = 1 })"
+```
+
+For `EACCES: permission denied, open '/run/secrets/kelvin_db_password'`, create a **local** Compose override so only the Kelvin process runs as the host user who owns the file. Run these commands from `/opt/docker/kelvin` and first confirm `docker-compose.override.yml` does not already exist:
+
+```sh
+ls docker-compose.override.yml
+printf 'services:\n  kelvin:\n    user: "%s:%s"\n' "$(id -u)" "$(id -g)" > docker-compose.override.yml
+docker compose config --quiet
+docker compose up -d --no-deps kelvin
+docker compose exec -T kelvin sh -c 'test -r /run/secrets/kelvin_db_password && echo readable'
+docker compose exec -T kelvin node -e "fetch('http://127.0.0.1:3337/ready').then(async r => console.log(r.status, await r.text()))"
+```
+
+The final response should be HTTP 200 with `database: true` and `model: true`. Keep the override on this host for future `docker compose up -d --build` runs. It is ignored by Git because it contains a machine-specific UID. If an override already exists, merge the `user` setting into it instead of replacing it.
+
 The database is stored in the `postgres_data` Docker volume. It starts empty and does **not** copy accounts or student records from the Vercel demo. There is no exposed database port. Application request logs go to Docker logs; MCP event records go to PostgreSQL.
 
 ## Updating and operating
