@@ -47,7 +47,7 @@ export async function setSharing(id, enabled) {
 }
 async function createStudent(name, password, shareWithInstructor) {
   if (typeof name !== 'string' || name.trim().length < 2 || name.length > 120 ||
-      typeof password !== 'string' || password.length < 12 || password.length > 200) return null;
+      typeof password !== 'string' || password.length < 8 || password.length > 200) return null;
   const salt = randomBytes(16).toString('hex');
   return mutateState(accountsKey, [], data => {
     let id;

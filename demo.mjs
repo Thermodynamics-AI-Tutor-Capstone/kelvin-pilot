@@ -75,7 +75,7 @@ export async function switchStudentProfessor(studentId, professorId, courseId) {
 export async function registerProfessor({ email: input, name, password }) {
   const email = normalizedEmail(input);
   if (!email || typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 120 ||
-      typeof password !== 'string' || password.length < 12 || password.length > 200) throw new Error('Enter a PSU email, name, and password of at least 12 characters');
+      typeof password !== 'string' || password.length < 8 || password.length > 200) throw new Error('Enter a PSU email, name, and password of at least 8 characters');
   const salt = randomBytes(16).toString('hex');
   return mutateState(accountsKey, [], data => {
     if (data.some(a => a.email === email && ['instructor','operator','researcher'].includes(a.role))) throw new Error('An account already uses this email');

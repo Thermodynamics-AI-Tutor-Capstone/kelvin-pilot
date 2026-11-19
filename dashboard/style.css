@@ -10,3 +10,21 @@ textarea{width:100%;padding:12px 13px;border:1px solid #c4d2d7;border-radius:9px
 .more-detail{margin:2px 0 12px}.more-detail>summary{cursor:pointer;color:#325b68;font-size:13px;font-weight:700;padding:8px 3px}.more-detail[open]>.chart-grid{margin-top:8px}
 .content-layout.no-selection{display:block}.content-layout.no-selection .content-preview{display:none}.content-layout.no-selection .content-items{grid-template-columns:repeat(2,minmax(0,1fr));max-height:68vh;gap:8px}.content-layout.no-selection .content-item{min-height:68px}.content-item span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
 @media(max-width:700px){.content-layout.no-selection .content-items{grid-template-columns:1fr}}
+.welcome-screen{min-height:calc(100vh - 140px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 0 52px}
+.welcome-screen .intro{text-align:center;margin:0 auto 30px;max-width:680px}
+.welcome-screen .intro h1{font-size:clamp(36px,5vw,52px);margin:0 0 10px}
+.welcome-screen .lead{margin:0 auto}
+.welcome-screen .entry-grid{width:min(900px,100%);margin:0 auto;align-items:stretch}
+.welcome-screen .entry-card{padding:32px;display:flex;flex-direction:column;box-shadow:0 18px 48px #24445712}
+.welcome-screen .entry-card h2{font-size:24px;margin:0 0 7px}
+.welcome-screen .entry-card>p{color:#607583;font-size:15px;line-height:1.55;min-height:0;margin:0 0 20px}
+.welcome-screen .entry-icon{margin:0 0 16px;font-size:18px;font-weight:800}
+.welcome-screen .entry-card form{margin-top:auto}
+.welcome-screen .entry-card label{font-size:14px}
+.welcome-screen .entry-card input{font-size:16px}
+.welcome-screen .entry-card .hint{margin:15px 0 0;font-size:14px}
+.welcome-screen .entry-card .hint .quiet{font-size:14px;text-decoration:underline;padding:0}
+.welcome-screen .error{text-align:center;margin:14px 0 0}
+.welcome-help{font-size:14px;color:#607583;margin:16px 0 0}
+.welcome-help a{color:#17616c;font-weight:700}
+@media(max-width:850px){.welcome-screen{justify-content:flex-start;padding:30px 0 48px}.welcome-screen .entry-grid{grid-template-columns:1fr;max-width:500px}.welcome-screen .entry-card{padding:26px}}

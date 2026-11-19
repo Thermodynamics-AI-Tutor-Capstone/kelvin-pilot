@@ -250,6 +250,41 @@ a:focus-visible {
   outline: 3px solid #76bdb6;
   outline-offset: 3px;
 }
+.plain-note {
+  margin-top: 20px;
+  padding: 20px 24px;
+  border-left: 4px solid #5baaa7;
+  border-radius: 0 12px 12px 0;
+  background: #edf5f3;
+  color: #385866;
+  font-size: 15px;
+  line-height: 1.65;
+}
+.plain-note strong { color: #163e4e; }
+.connect-section { border-top: 1px solid #dce4e5; padding: 55px 0 78px; }
+.connect-section .connector { margin: 26px 0; }
+.connector p code { font-size: inherit; padding: 0; border: 0; background: none; }
+.guide-list { display: grid; gap: 12px; }
+.client-guide { border: 1px solid #dce4e5; border-radius: 14px; background: #fff; overflow: hidden; }
+.client-guide[open] { border-color: #9bcac5; box-shadow: 0 12px 35px #2444570d; }
+.client-guide summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 24px; list-style: none; cursor: pointer; }
+.client-guide summary::-webkit-details-marker { display: none; }
+.client-guide summary strong { display: block; color: #193047; font-size: 20px; }
+.client-guide summary small { display: block; color: #607583; font-size: 14px; margin-top: 4px; line-height: 1.4; }
+.guide-action { color: #17616c; font-size: 14px; font-weight: 700; }
+.client-guide[open] .guide-action { visibility: hidden; }
+.client-guide ol { margin: 0 24px 18px; padding: 18px 24px 4px 42px; border-top: 1px solid #e4ecec; }
+.client-guide li { padding: 0 0 14px 7px; color: #466471; font-size: 16px; line-height: 1.55; }
+.client-guide li::marker { color: #287c7d; font-weight: 800; }
+.client-guide code { overflow-wrap: anywhere; }
+.guide-foot { margin: 0 24px 24px; color: #607583; font-size: 14px; line-height: 1.5; }
+.guide-foot a { color: #17616c; font-weight: 700; }
+.dashboard-callout { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 28px; padding: 28px 32px; border-radius: 16px; background: #193e51; color: #fff; }
+.dashboard-callout h2 { margin: 0 0 5px; font-size: 23px; }
+.dashboard-callout p { margin: 0; color: #d6e8ea; line-height: 1.5; }
+.dashboard-callout .button { background: #fff; color: #163e4e; white-space: nowrap; }
+.dashboard-callout .button:hover { background: #e7f4f1; }
+.client-guide summary:focus-visible { outline: 3px solid #76bdb6; outline-offset: -3px; }
 @media (max-width: 850px) {
   .hero {
     grid-template-columns: 1fr;
@@ -267,6 +302,7 @@ a:focus-visible {
   .steps {
     grid-template-columns: 1fr 1fr;
   }
+  .dashboard-callout { align-items: flex-start; flex-direction: column; }
 }
 @media (max-width: 600px) {
   .topbar {
@@ -315,6 +351,11 @@ a:focus-visible {
   .step {
     padding: 20px;
   }
+  .connect-section { padding: 42px 0 55px; }
+  .client-guide summary { padding: 18px; }
+  .client-guide ol { margin: 0 18px 14px; padding: 18px 8px 0 28px; }
+  .guide-foot { margin: 0 18px 20px; }
+  .dashboard-callout { padding: 24px; }
   footer {
     flex-direction: column;
     padding: 22px 18px;

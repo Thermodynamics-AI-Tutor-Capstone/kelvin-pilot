@@ -70,7 +70,10 @@ test('canonical MCP requires email OAuth, serves course content, and logs safe u
     const home = await fetch(base);
     assert.equal(home.status, 200);
     const page = await home.text();
-    assert.match(page, /Your thermodynamics course, connected to your AI assistant/);
+    assert.match(page, /Bring your course into your AI conversation/);
+    assert.match(page, /What is an MCP server/);
+    assert.match(page, /ChatGPT/);
+    assert.match(page, /Gemini/);
     assert.match(page, /href="\/dashboard"/);
     assert.match(page, /https:\/\/kelvin\.me\.psu\.edu\/mcp/);
     assert.equal((await fetch(`${base}/landing/style.css`)).status, 200);

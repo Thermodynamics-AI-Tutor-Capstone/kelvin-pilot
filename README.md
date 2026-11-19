@@ -56,6 +56,19 @@ docker compose exec -T db pg_dump -U kelvin -d kelvin -Fc > kelvin-backup.dump
 
 GitHub Actions runs the Node tests, validates Compose, and builds the image. It does not deploy to the GB10; Gary or the operator controls that host.
 
+## Traffic and sign-in
+
+Every HTTP request produces one structured JSON request record in the Kelvin container logs, including route, status, timing, request ID, and MCP method/tool name when applicable. Request bodies and authorization headers are not logged. Compose retains five 10 MB log files; it is a short-term operations log, not a permanent traffic archive. MCP tool-call events are also stored in PostgreSQL for course activity analysis. Health checks hit `/ready` every 30 seconds, so filter those out when counting visitor traffic.
+
+From `/opt/docker/kelvin`, these read-only commands show recent non-health traffic and the stored MCP event count:
+
+```sh
+docker compose logs --since 24h --no-color kelvin | grep '"event":"request"' | grep -v '"path":"/ready"' | wc -l
+docker compose exec -T db psql -U kelvin -d kelvin -Atc 'SELECT count(*) FROM kelvin_rpc_events'
+```
+
+The pilot's PSU-email student flow does not verify identity. See the [Penn State SSO plan](docs/PENN-STATE-SSO-PLAN.md) for the IAM registration and integration steps.
+
 ## Current pilot boundary
 
 The copied app still uses the demo's email-only student flow. Email ownership is not verified, so this build is for setup and controlled testing until Penn State provides an approved identity path. The repository includes the real ME 300 course cards and the student-facing transcripts already used by the demo. Course files, accounts, and usage recorded on the GB10 stay in its own database.

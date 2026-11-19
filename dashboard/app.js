@@ -38,17 +38,17 @@ signout.addEventListener('click', async () => {
 });
 async function welcome() {
   signout.classList.add('hidden'); identity.textContent = '';
-  app.innerHTML = `<section class="intro"><h1>Kelvin dashboard</h1></section>
-    <div class="entry-grid"><section class="panel entry-card"><h2>Student</h2><p>Use the email you connected in Claude.</p>
+  app.innerHTML = `<div class="welcome-screen"><section class="intro"><p class="eyebrow">Your course workspace</p><h1>Welcome to Kelvin</h1><p class="lead">Choose how you use Kelvin to open your dashboard.</p></section>
+    <div class="entry-grid"><section class="panel entry-card"><span class="entry-icon" aria-hidden="true">S</span><h2>Student</h2><p>Use the PSU email you connected to Kelvin in your chat app.</p>
       <form id="student-form"><label>PSU email<input type="email" name="email" placeholder="you@psu.edu" autocomplete="email" required></label>
       <button class="button full">Open dashboard</button></form></section>
-    <section class="panel entry-card"><h2>Professor</h2>
+    <section class="panel entry-card"><span class="entry-icon" aria-hidden="true">P</span><h2>Professor</h2>
       <div class="tab-row"><button class="mini-tab active" data-auth="signin">Sign in</button><button class="mini-tab" data-auth="register">Create account</button></div>
       <form id="professor-form"><div id="name-row" class="hidden"><label>Your name<input name="name" autocomplete="name"></label></div>
-      <label>PSU email or account ID<input name="email" autocomplete="username" required></label>
+      <label>PSU email<input name="email" type="email" placeholder="you@psu.edu" autocomplete="username" required></label>
       <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
-      <button class="button full" id="professor-submit">Sign in</button></form><p class="hint">Sample view: username / password</p></section></div>
-    <p id="message" class="error" role="alert"></p>`;
+      <button class="button full" id="professor-submit">Sign in</button></form><p class="hint">Want to explore first? <button class="quiet" id="sample-view" type="button">Open sample view</button></p></section></div>
+    <p id="message" class="error" role="alert"></p><p class="welcome-help">New to Kelvin? <a href="/#connect">See connection steps</a></p></div>`;
   document.querySelector('#student-form').addEventListener('submit', async event => {
     event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
     try { await setSession(await api('/api/student-session', { method: 'POST', body: values, auth: false })); } catch (e) { error(e.message); }
@@ -57,21 +57,21 @@ async function welcome() {
   document.querySelectorAll('[data-auth]').forEach(button => button.addEventListener('click', () => {
     mode = button.dataset.auth; document.querySelectorAll('[data-auth]').forEach(item => item.classList.toggle('active', item === button));
     document.querySelector('#name-row').classList.toggle('hidden', mode !== 'register');
-    document.querySelector('#professor-form [name="password"]').minLength = mode === 'register' ? 12 : 1;
+    document.querySelector('#professor-form [name="password"]').minLength = mode === 'register' ? 8 : 1;
     document.querySelector('#professor-submit').textContent = mode === 'register' ? 'Create professor account' : 'Sign in';
     document.querySelector('#professor-form [name="email"]').placeholder = mode === 'register' ? 'you@psu.edu' : '';
   }));
   document.querySelector('#professor-form').addEventListener('submit', async event => {
     event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
-    if (mode === 'signin' && values.email === 'username' && values.password === 'password') {
-      state.account = { id: 'sample-professor', role: 'sample', name: 'Demo Professor' }; state.token = null;
-      state.courses = [{ id: 'demo-me300', code: 'ME 300', title: 'ME 300 Engineering Thermodynamics' }];
-      state.courseId = 'demo-me300'; state.tab = 'activity'; state.preview = true;
-      state.detail = { course: state.courses[0], cards: [], skills: [], files: [] };
-      await loadSampleContent(); renderWorkspace(); return;
-    }
     try { await setSession(await api(mode === 'register' ? '/api/professor-register' : '/api/professor-session',
       { method: 'POST', body: values, auth: false })); } catch (e) { error(e.message); }
+  });
+  document.querySelector('#sample-view').addEventListener('click', async () => {
+    state.account = { id: 'sample-professor', role: 'sample', name: 'Demo Professor' }; state.token = null;
+    state.courses = [{ id: 'demo-me300', code: 'ME 300', title: 'ME 300 Engineering Thermodynamics' }];
+    state.courseId = 'demo-me300'; state.tab = 'activity'; state.preview = true;
+    state.detail = { course: state.courses[0], cards: [], skills: [], files: [] };
+    await loadSampleContent(); renderWorkspace();
   });
 }
 async function loadSampleContent() {
