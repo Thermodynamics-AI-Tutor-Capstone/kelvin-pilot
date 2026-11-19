@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readState, mutateState } from './persistence.mjs';
 import { loadContent, metadata } from './content.mjs';
 import sourceManifest from './canvas-source-manifest.json' with { type: 'json' };
+import { applyStudio, studioState } from './studio.mjs';
 
 const key = 'course-revisions.json';
 const scheduleKey = 'course-schedules.json';
@@ -12,8 +13,11 @@ export const canEditCourse = (account, course) => Boolean(account && course && e
 export const sourceInventory = () => ({ course: 'ME 300 · O’Connor · Summer 2023', repository: 'Thermodynamics-AI-Tutor-Capstone/kelvin-ingestion',
   items: sourceManifest, note: 'Private Canvas source inventory. Files with solutions are not exposed to students.' });
 export async function courseRevisions(courseId) { return (await readState(key, {}))[courseId] || []; }
-export async function courseVersion(courseId) { return (await courseRevisions(courseId)).at(-1)?.version || 0; }
-export async function contentForCourse(courseId) {
+export async function courseVersion(courseId) {
+  const legacy = (await courseRevisions(courseId)).at(-1)?.version || 0;
+  return legacy + (await studioState(courseId)).publishedVersion;
+}
+export async function contentForCourse(courseId, includeDraft = false) {
   const cards = new Map([...bundled.cards].map(([id, card]) => [id, { ...card }]));
   const skills = new Map([...bundled.skills].map(([id, skill]) => [id, { ...skill }]));
   if (courseId !== 'oconnor-me300-su23') {
@@ -24,13 +28,8 @@ export async function contentForCourse(courseId) {
       description: 'General ME 300 thermodynamics concepts based on the O’Connor Summer 2023 source section; use your current course for dates and assignments.',
       body: '# ME 300 Engineering Thermodynamics concept template\n\nCore concepts: systems and control volumes, properties, ideal gases, phase change, energy, heat and work, first-law and second-law analysis, entropy, and engineering cycles. The teaching cards were derived from Dr. O’Connor’s real Summer 2023 course. This template does not contain a current section schedule, grades, or assignments.' });
   }
-  for (const revision of await courseRevisions(courseId)) {
-    if (!['card','skill'].includes(revision.kind)) continue;
-    const map = revision.kind === 'skill' ? skills : cards;
-    if (revision.action === 'delete') map.delete(revision.itemId);
-    else map.set(revision.itemId, { ...map.get(revision.itemId), ...revision.value });
-  }
-  return { cards, skills, version: await courseVersion(courseId) };
+  const effective = await applyStudio(courseId, cards, skills, includeDraft, await courseRevisions(courseId));
+  return { ...effective, version: await courseVersion(courseId) };
 }
 export async function noteCourseChange(courseId, actorId, kind, itemId, value, reason) {
   return mutateState(key, {}, data => {

@@ -11,9 +11,9 @@ export function clientFamily(agent = '') {
   return value.includes('claude') || value.includes('anthropic') ? 'claude' : value.includes('chatgpt') || value.includes('openai') ? 'chatgpt' :
     value.includes('gemini') || value.includes('google') ? 'gemini' : 'unknown';
 }
-export async function recordMcpCall({ requestId, user, body, userAgent, status, courseVersion, durationMs, cardId }) {
+export async function recordMcpCall({ requestId, user, body, userAgent, status, courseVersion, templateVersion, pedagogyVersion, durationMs, cardId }) {
   const event = { id: randomUUID(), schemaVersion: 1, at: new Date().toISOString(), requestId, studentId: user.role === 'student' ? user.id : null,
-    accountId: user.id, role: user.role, courseId: user.courseId || null, courseVersion,
+    accountId: user.id, role: user.role, courseId: user.courseId || null, courseVersion, templateVersion, pedagogyVersion,
     client: clientFamily(userAgent), clientUserAgent: String(userAgent || '').slice(0, 300),
     method: String(body?.method || 'unknown'), tool: body?.method === 'tools/call' ? String(body.params?.name || '') : null,
     cardId: cardId || null,

@@ -5,10 +5,14 @@ export const provenance = "Course and topic cards draw on real Penn State ME 300
 export function loadContent() { return { cards: new Map(bundled.cards), skills: new Map(bundled.skills) }; }
 
 export function metadata(card) {
+  const origin = card.origin || 'bundled template';
+  const original = origin === 'bundled template';
   return { id: card.id, kind: card.kind, title: card.title, description: card.description,
+    origin,
     sourceCourse: 'Penn State ME 300 Engineering Thermodynamics',
-    sourceTerm: card.kind === 'misconception' ? undefined : 'Summer 2023',
-    sourceMaterial: card.kind === 'misconception' ? 'cited thermodynamics education research' : 'actual Penn State course files',
+    sourceTerm: original && card.kind !== 'misconception' ? 'Summer 2023' : undefined,
+    sourceMaterial: original ? (card.kind === 'misconception' ? 'cited thermodynamics education research' : 'actual Penn State course files')
+      : origin === 'global template' || origin === 'template draft' ? 'Kelvin shared template' : 'faculty-edited course content',
     studyCardStatus: card.status, unit: card.unit, parent: card.parent };
 }
 

@@ -3,7 +3,8 @@ const signout = document.querySelector('#signout');
 const identity = document.querySelector('#identity');
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const state = { token: sessionStorage.getItem('kelvin-demo-token'), account: null, courses: [], courseId: null,
-  detail: null, analytics: null, student: null, tab: 'activity', category: 'topic', query: '', selected: null, preview: false };
+  detail: null, analytics: null, student: null, tab: 'activity', category: 'topic', query: '', selected: null, preview: false,
+  adminSelected: null, adminQuery: '', adminRole: '', adminOffset: 0, adminActivityOffset: 0, studioSelected: null };
 const demoAnalytics = () => {
   const now = new Date(); now.setUTCHours(0, 0, 0, 0);
   const requests = [18, 24, 21, 34, 38, 29, 26, 43, 51, 47, 58, 54, 67, 63];
@@ -27,7 +28,7 @@ async function api(path, { method = 'GET', body, auth = true } = {}) {
 function setSession(session) {
   state.token = session.token; state.account = session.account;
   sessionStorage.setItem('kelvin-demo-token', state.token);
-  state.courseId = null; state.tab = state.account.role === 'student' ? 'learning' : 'activity';
+  state.courseId = null; state.tab = state.account.role === 'student' ? 'learning' : state.account.role === 'operator' ? 'admin' : 'activity';
   return loadWorkspace();
 }
 signout.addEventListener('click', async () => {
@@ -103,8 +104,9 @@ function renderWorkspace() {
   app.innerHTML = `<div class="workspace-head">${professor && state.account.role !== 'sample' ?
     `<label class="course-switch">Course<select id="course-select">${state.courses.map(c => `<option value="${escapeHtml(c.id)}" ${c.id === state.courseId ? 'selected' : ''}>${escapeHtml(c.code)} · ${escapeHtml(c.title)}</option>`).join('')}</select></label>` :
     `<h1>${escapeHtml(professor ? course?.code || course?.title : course?.title || 'Your course')}</h1>`}</div>
-    <nav class="nav-tabs" aria-label="Workspace sections">${(professor ? state.account.role === 'researcher' ? [['activity', 'Activity over time'], ['content', 'Course content']] :
-      [['activity', 'Activity over time'], ['content', 'Course content'], ['manage', 'Schedule & versions'], ['upload', 'Courses & uploads']] : [['learning', 'My learning'], ['content', 'Course content']])
+    <nav class="nav-tabs" aria-label="Workspace sections">${(professor ? state.account.role === 'researcher' ? [['activity', 'Activity over time'], ['content', 'Course content'], ['lab', 'Pedagogy lab']] :
+      [['activity', 'Activity over time'], ['content', 'Course content'], ['studio', 'Faculty studio'], ['lab', 'Pedagogy lab'], ['manage', 'Schedule & versions'], ['upload', 'Courses & uploads'],
+        ...(state.account.role === 'operator' ? [['template', 'Global template'], ['admin', 'All activity']] : [])] : [['learning', 'My learning'], ['content', 'Course content']])
       .map(([id, label]) => `<button data-tab="${id}" class="${state.tab === id ? 'active' : ''}">${label}</button>`).join('')}</nav>
     <section id="workspace-body"></section>`;
   document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => { state.tab = button.dataset.tab; renderWorkspace(); }));
@@ -114,6 +116,10 @@ function renderWorkspace() {
   if (state.tab === 'content') renderContent();
   if (state.tab === 'upload') renderUpload();
   if (state.tab === 'manage') renderManage();
+  if (state.tab === 'studio') renderStudio().catch(e => showError(e.message));
+  if (state.tab === 'template') renderTemplate().catch(e => showError(e.message));
+  if (state.tab === 'lab') renderLab().catch(e => showError(e.message));
+  if (state.tab === 'admin') renderAdmin().catch(e => showError(e.message));
 }
 function showError(message) { const body = document.querySelector('#workspace-body'); if (body) body.innerHTML = `<p class="error">${escapeHtml(message)}</p>`; }
 function chart(title, series, field, color) {
@@ -243,7 +249,7 @@ function renderContent() {
     <section class="panel content-preview"><h2>${escapeHtml(state.selected?.title || 'Select an item')}</h2>${state.selected?.description ? `<p class="muted">${escapeHtml(state.selected.description)}</p>` : ''}
     ${state.selected ? `<pre id="content-text"></pre>${state.selected.versions?.length > 1 ? `<details><summary>File versions</summary><ul class="simple-list">${state.selected.versions.map(v =>
       `<li>v${v.version} · ${escapeHtml(new Date(v.createdAt).toLocaleDateString())}</li>`).join('')}</ul></details>` : ''}${['instructor','operator'].includes(state.account.role) && !state.account.demoProfessor &&
-      (state.account.role === 'operator' || state.detail?.course?.professorId === state.account.id) ? '<button id="edit-item" class="button secondary">Edit this item</button>' : ''}` : ''}</section></div>`;
+      (state.account.role === 'operator' || state.detail?.course?.professorId === state.account.id) ? '<button id="edit-item" class="button secondary">Edit draft</button>' : ''}` : ''}</section></div>`;
   if (state.selected) document.querySelector('#content-text').textContent = state.selected.content;
   document.querySelector('#edit-item')?.addEventListener('click', () => editSelected());
   document.querySelectorAll('[data-category]').forEach(button => button.addEventListener('click', () => {
@@ -266,9 +272,10 @@ function editSelected() {
   pane.querySelector('[name="body"]').value = item.content || '';
   pane.querySelector('#item-editor').addEventListener('submit', async event => {
     event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
-    try { await api(`/api/courses/${encodeURIComponent(state.courseId)}/revisions`, { method: 'POST',
-      body: { kind, itemId: item.id, value: { ...values, kind: item.kind }, reason: values.reason, expectedVersion: state.detail.version } });
-      await loadCourse(); }
+    try { await api(`/api/courses/${encodeURIComponent(state.courseId)}/studio/draft`, { method: 'POST',
+      body: { kind, itemId: item.id, value: { ...values, kind: item.kind }, reason: values.reason,
+        expectedRevision: state.detail.studio?.draftRevision || 0 } });
+      state.studioSelected = `${kind}:${item.id}`; state.tab = 'studio'; await loadCourse(); }
     catch (e) { pane.querySelector('#edit-result').textContent = e.message; }
   });
 }
@@ -298,7 +305,8 @@ async function renderManage() {
       ${readOnly || !['card','skill'].includes(r.kind) ? '' : `<button class="button secondary" data-restore="${escapeHtml(r.id)}" data-item="${escapeHtml(r.itemId)}">Restore this version</button>`}</div>`).join('') : '<p>No course edits yet.</p>';
     body.querySelectorAll('[data-restore]').forEach(button => button.addEventListener('click', async () => {
       try { await api(`/api/courses/${encodeURIComponent(state.courseId)}/revisions/restore`, { method: 'POST',
-        body: { itemId: button.dataset.item, revisionId: button.dataset.restore, expectedVersion: state.detail.version } }); await loadCourse(); }
+        body: { itemId: button.dataset.item, revisionId: button.dataset.restore,
+          expectedRevision: state.detail.studio?.draftRevision || 0 } }); state.tab = 'studio'; await loadCourse(); }
       catch (e) { showError(e.message); }
     }));
     if (course?.sourceCourse) {
@@ -334,9 +342,265 @@ function renderUpload() {
     catch (e) { document.querySelector('#upload-message').textContent = e.message; }
   });
 }
+async function renderStudio() { return renderStudioSurface('course'); }
+async function renderTemplate() { return renderStudioSurface('template'); }
+async function renderStudioSurface(scope) {
+  const template = scope === 'template';
+  const path = template ? '/api/studio/template' : `/api/courses/${encodeURIComponent(state.courseId)}/studio`;
+  const data = await api(`${path}?draft=1`), published = await api(path);
+  const meta = data.state, items = [
+    ...data.cards.map(item => ({ ...item, itemKind: 'card' })),
+    ...data.skills.map(item => ({ ...item, itemKind: 'skill' }))];
+  const selected = items.find(item => `${item.itemKind}:${item.id}` === state.studioSelected) || items[0];
+  state.studioSelected = selected ? `${selected.itemKind}:${selected.id}` : null;
+  const previous = published.cards.concat(published.skills).find(item => item.id === selected?.id);
+  const body = document.querySelector('#workspace-body');
+  body.innerHTML = `<div class="section-title"><div><p class="eyebrow">${template ? 'Shared foundation' : 'Your course'}</p><h2>${template ? 'Global template' : 'Faculty studio'}</h2>
+    <p class="muted">${template ? 'Changes here are published for the generic template. Existing faculty courses keep their selected template version.' :
+      'Edit a draft, preview it, then publish when it is ready for students.'}</p></div></div>
+    <div class="studio-summary"><div><small>Published</small><strong>v${escapeHtml(template ? meta.templateVersion : meta.publishedVersion)}</strong></div>
+      <div><small>Draft changes</small><strong>${escapeHtml(template ? meta.templateDraftCount : meta.draftCount)}</strong></div>
+      ${template ? '' : `<div><small>Template used</small><strong>v${escapeHtml(meta.baseVersion)}</strong></div>`}</div>
+    <div class="studio-actions"><button class="button" id="studio-publish" ${!(template ? meta.templateDraftCount : meta.draftCount) ? 'disabled' : ''}>Publish draft</button>
+      ${!template && meta.templateVersion > meta.baseVersion ? '<button class="button secondary" id="studio-adopt">Update to latest template</button>' : ''}
+      <button class="button secondary" id="studio-new-card">New course card</button><button class="button secondary" id="studio-new-skill">New teaching skill</button></div>
+    <div class="studio-layout"><section class="panel studio-list"><h2>Content and skills</h2><label class="search-label">Find an item<input id="studio-search" type="search" placeholder="Search the course"></label>
+      <div class="studio-items">${items.map(item => `<button class="content-item ${state.studioSelected === `${item.itemKind}:${item.id}` ? 'active' : ''}" data-studio-item="${escapeHtml(item.itemKind)}:${escapeHtml(item.id)}"><strong>${escapeHtml(item.title || item.name || item.id)}</strong>
+        <span>${escapeHtml(item.itemKind === 'skill' ? 'Teaching skill' : item.kind)} · ${escapeHtml(item.origin || 'bundled template')}</span></button>`).join('')}</div></section>
+      <section class="panel studio-editor">${selected ? `<p class="eyebrow">${escapeHtml(selected.origin || 'bundled template')}</p><h2>${escapeHtml(selected.title || selected.name || selected.id)}</h2>
+        <p class="muted">${escapeHtml(selected.id)}</p><form id="studio-form"><label>Title<input name="title" maxlength="160" required></label>
+        <label>Description<textarea name="description" rows="3" maxlength="1000"></textarea></label>
+        <label>Content<textarea name="body" rows="17" required></textarea></label>
+        <label>Reason for change<input name="reason" maxlength="500" placeholder="What changed and why?"></label>
+        <button class="button">Save draft</button><button class="button secondary" type="button" id="studio-reset">${template ? 'Reset to bundled item' : 'Reset to template'}</button></form><details class="studio-compare"><summary>Compare with published</summary>
+        <pre>${escapeHtml(previous?.body || 'New item; no published version yet.')}</pre></details><p id="studio-message" role="status"></p>` : '<p>Select an item to edit.</p>'}</section></div>
+    <section class="panel"><h2>Published history</h2><div class="history-list">${(template ? meta.templateHistory : meta.courseHistory).slice().reverse().map(release =>
+      `<div class="history-row"><strong>v${escapeHtml(release.version)}</strong><span>${escapeHtml(new Date(release.at).toLocaleString())}</span><span>${escapeHtml(release.count)} changes</span><span>${escapeHtml(release.reason || '')}</span>
+        <div class="history-items">${release.items.map(item => `<button class="quiet" data-restore-kind="${escapeHtml(item.kind)}" data-restore-item="${escapeHtml(item.itemId)}" data-restore-version="${escapeHtml(release.version)}">Restore ${escapeHtml(item.title)} to draft</button>`).join('')}</div></div>`).join('') || '<p class="muted">No published changes yet.</p>'}</div></section>`;
+  if (selected) {
+    const form = body.querySelector('#studio-form');
+    form.elements.title.value = selected.title || selected.name || selected.id;
+    form.elements.description.value = selected.description || '';
+    form.elements.body.value = selected.body || '';
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const values = Object.fromEntries(new FormData(form));
+      try { await api(`${path}/draft`, { method: 'POST', body: { kind: selected.itemKind, itemId: selected.id,
+        value: { ...values, kind: selected.kind }, reason: values.reason,
+        expectedRevision: template ? meta.templateDraftRevision : meta.draftRevision } });
+        await renderStudioSurface(scope); }
+      catch (e) { body.querySelector('#studio-message').textContent = e.message; }
+    });
+    form.querySelector('#studio-reset').addEventListener('click', async () => {
+      try { await api(`${path}/draft`, { method: 'POST', body: { kind: selected.itemKind, itemId: selected.id,
+        action: 'reset', reason: 'Reset to inherited content',
+        expectedRevision: template ? meta.templateDraftRevision : meta.draftRevision } });
+        await renderStudioSurface(scope); }
+      catch (e) { body.querySelector('#studio-message').textContent = e.message; }
+    });
+  }
+  body.querySelectorAll('[data-restore-version]').forEach(button => button.addEventListener('click', async () => {
+    try { await api(`${path}/restore`, { method: 'POST', body: { version: Number(button.dataset.restoreVersion),
+      kind: button.dataset.restoreKind, itemId: button.dataset.restoreItem,
+      expectedRevision: template ? meta.templateDraftRevision : meta.draftRevision } });
+      state.studioSelected = `${button.dataset.restoreKind}:${button.dataset.restoreItem}`; await renderStudioSurface(scope); }
+    catch (e) { showError(e.message); }
+  }));
+  body.querySelectorAll('[data-studio-item]').forEach(button => button.addEventListener('click', () => {
+    state.studioSelected = button.dataset.studioItem; renderStudioSurface(scope).catch(e => showError(e.message));
+  }));
+  body.querySelector('#studio-search').addEventListener('input', event => {
+    const q = event.target.value.toLowerCase();
+    body.querySelectorAll('[data-studio-item]').forEach(button => { button.hidden = !button.textContent.toLowerCase().includes(q); });
+  });
+  body.querySelector('#studio-publish').addEventListener('click', async () => {
+    const reason = body.querySelector('#studio-form [name="reason"]')?.value || 'Reviewed faculty update';
+    try { await api(`${path}/publish`, { method: 'POST', body: { reason } }); await loadCourse(); }
+    catch (e) { body.querySelector('#studio-message').textContent = e.message; }
+  });
+  body.querySelector('#studio-adopt')?.addEventListener('click', async () => {
+    try { await api(`${path}/adopt-template`, { method: 'POST' }); await loadCourse(); }
+    catch (e) { showError(e.message); }
+  });
+  for (const kind of ['card','skill']) body.querySelector(`#studio-new-${kind}`).addEventListener('click', () => {
+    const id = window.prompt(`New ${kind} ID (letters, numbers, hyphens):`);
+    if (!id) return;
+    const normalized = id.trim();
+    if (!/^[\w:-]{2,120}$/.test(normalized)) { showError('Use letters, numbers, hyphens or colons in the ID.'); return; }
+    state.studioSelected = `${kind}:${normalized}`;
+    const draft = { ...data, cards: [...data.cards], skills: [...data.skills] };
+    if (kind === 'card') draft.cards.push({ id: normalized, kind: 'topic', title: normalized, body: 'Write the course content here.', origin: 'new draft' });
+    else draft.skills.push({ id: normalized, title: normalized, body: 'Write the teaching procedure here.', origin: 'new draft' });
+    renderNewStudioItem(scope, path, draft, meta, normalized, kind);
+  });
+}
+function renderNewStudioItem(scope, path, draft, meta, id, kind) {
+  const body = document.querySelector('#workspace-body');
+  const pane = body.querySelector('.studio-editor');
+  pane.innerHTML = `<p class="eyebrow">New ${kind}</p><h2>${escapeHtml(id)}</h2><form id="studio-form"><label>Title<input name="title" required maxlength="160"></label>
+    <label>Description<textarea name="description" maxlength="1000"></textarea></label><label>Content<textarea name="body" rows="17" required></textarea></label>
+    <label>Reason<input name="reason" maxlength="500"></label><button class="button">Save draft</button></form><p id="studio-message" role="status"></p>`;
+  pane.querySelector('#studio-form').addEventListener('submit', async event => {
+    event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
+    try { await api(`${path}/draft`, { method: 'POST', body: { kind, itemId: id,
+      value: { ...values, kind: 'topic' }, reason: values.reason,
+      expectedRevision: scope === 'template' ? meta.templateDraftRevision : meta.draftRevision } });
+      await renderStudioSurface(scope); }
+    catch (e) { pane.querySelector('#studio-message').textContent = e.message; }
+  });
+}
+async function renderLab() {
+  const course = encodeURIComponent(state.courseId);
+  const [scenarios, runs] = await Promise.all([
+    api(`/api/courses/${course}/pedagogy/scenarios`), api(`/api/courses/${course}/pedagogy/runs`)]);
+  const body = document.querySelector('#workspace-body');
+  body.innerHTML = `<div class="section-title"><div><p class="eyebrow">Pedagogy lab</p><h2>Test a tutoring version</h2>
+    <p class="muted">Run a fixed question against Kelvin's local model and review the response. External chat clients may behave differently.</p></div></div>
+    <div class="lab-layout"><section class="panel"><h2>Scenario</h2><form id="lab-run"><label>Question type<select name="scenarioId">${scenarios.map(s =>
+      `<option value="${escapeHtml(s.id)}">${escapeHtml(s.title)}</option>`).join('')}</select></label>
+      <label>Version<select name="mode"><option value="published">Published</option><option value="draft">Current draft</option></select></label>
+      <button class="button" ${state.account.role === 'researcher' ? 'disabled' : ''}>Run test</button></form>
+      <div id="scenario-description" class="scenario-description"></div><p id="lab-message" role="status"></p></section>
+      <section class="panel"><h2>What to review</h2><ul id="lab-checklist" class="checklist"></ul>
+      <p class="muted">A human reviewer decides whether the response follows the teaching rule. A passing test is not a measure of student learning.</p></section></div>
+    <section class="panel"><h2>Version comparison</h2><div id="lab-comparison" class="lab-comparison"></div></section>
+    <section class="panel"><div class="section-title"><h2>Run history</h2><span class="muted">${escapeHtml(runs.total)} runs</span></div>
+      <div class="run-list">${runs.rows.map(run => `<article class="run-card"><div class="run-head"><strong>${escapeHtml(scenarios.find(s => s.id === run.scenarioId)?.title || run.scenarioId)}</strong>
+        <span class="badge ${run.review?.verdict === 'needs-work' ? 'demo' : ''}">${escapeHtml(run.review?.verdict || 'Needs review')}</span></div>
+        <p class="muted">${escapeHtml(new Date(run.at).toLocaleString())} · ${escapeHtml(run.mode)} · course v${escapeHtml(run.courseVersion)} · template v${escapeHtml(run.templateVersion)}</p>
+        <p class="muted">${escapeHtml(run.responseMode)}${run.model ? ` · ${escapeHtml(run.model)}` : ''}</p>
+        <pre>${escapeHtml(run.response)}</pre><p class="muted">Evidence: ${escapeHtml(run.evidence.map(e => e.title || e.id).join(', ') || 'none')}</p>
+        ${run.review ? `<p><strong>Reviewer:</strong> ${escapeHtml(run.review.note || run.review.verdict)}</p>` : ''}
+        ${state.account.role === 'researcher' ? '' : `<form class="lab-review" data-run="${escapeHtml(run.id)}"><label>Verdict<select name="verdict">
+          <option value="pass">Follows the rule</option><option value="needs-work">Needs work</option><option value="uncertain">Uncertain</option></select></label>
+          <label>Observation<input name="note" maxlength="2000" placeholder="What did Kelvin do?"></label><button class="button secondary">Save review</button></form>`}</article>`).join('') || '<p class="muted">No tests yet. Run a scenario to start comparing versions.</p>'}</div></section>`;
+  const select = body.querySelector('#lab-run [name="scenarioId"]');
+  const describe = () => { const scenario = scenarios.find(s => s.id === select.value);
+    body.querySelector('#scenario-description').textContent = scenario?.question || '';
+    body.querySelector('#lab-checklist').innerHTML = (scenario?.review || []).map(line => `<li>${escapeHtml(line)}</li>`).join('');
+    const pair = ['published','draft'].map(mode => runs.rows.find(run => run.scenarioId === select.value && run.mode === mode));
+    body.querySelector('#lab-comparison').innerHTML = pair.map((run, index) => `<div class="compare-version"><h3>${index ? 'Draft' : 'Published'}</h3>
+      ${run ? `<p class="muted">Course v${escapeHtml(run.courseVersion)} · template v${escapeHtml(run.templateVersion)} · ${escapeHtml(run.review?.verdict || 'needs review')}</p>
+        <pre>${escapeHtml(run.response)}</pre>` : '<p class="muted">No run for this version yet.</p>'}</div>`).join(''); };
+  select.addEventListener('change', describe); describe();
+  body.querySelector('#lab-run').addEventListener('submit', async event => {
+    event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
+    const button = event.currentTarget.querySelector('button'); button.disabled = true; button.textContent = 'Running…';
+    try { await api(`/api/courses/${course}/pedagogy/runs`, { method: 'POST', body: values }); await renderLab(); }
+    catch (e) { body.querySelector('#lab-message').textContent = e.message; button.disabled = false; button.textContent = 'Run test'; }
+  });
+  body.querySelectorAll('.lab-review').forEach(form => form.addEventListener('submit', async event => {
+    event.preventDefault();
+    try { await api(`/api/courses/${course}/pedagogy/runs/${encodeURIComponent(form.dataset.run)}/review`,
+      { method: 'PUT', body: Object.fromEntries(new FormData(form)) }); await renderLab(); }
+    catch (e) { showError(e.message); }
+  }));
+}
+async function renderAdmin() {
+  const params = new URLSearchParams({ q: state.adminQuery, role: state.adminRole, offset: String(state.adminOffset) });
+  const [overview, listing, traffic, audit] = await Promise.all([api('/api/admin/overview'), api(`/api/admin/accounts?${params}`),
+    api('/api/admin/traffic'), api('/api/admin/audit')]);
+  const body = document.querySelector('#workspace-body');
+  body.innerHTML = `<div class="section-title"><div><p class="eyebrow">Operator workspace</p><h2>People and activity</h2>
+    <p class="muted">Find a faculty or student account, inspect its activity, and make documented corrections.</p></div><button class="button secondary" id="admin-refresh">Refresh</button></div>
+    <div class="admin-stats"><div><small>Accounts</small><strong>${escapeHtml(overview.accounts)}</strong></div>
+      <div><small>Students</small><strong>${escapeHtml(overview.students)}</strong></div>
+      <div><small>Faculty</small><strong>${escapeHtml(overview.faculty)}</strong></div>
+      <div><small>Active in 15 min</small><strong>${escapeHtml(overview.activeNow)}</strong></div>
+      <div><small>MCP calls</small><strong>${escapeHtml(overview.calls)}</strong></div>
+      <div><small>Site requests · 24h</small><strong>${escapeHtml(traffic.requests24h)}</strong></div></div>
+    <div class="admin-layout"><section class="panel admin-directory"><h2>Directory</h2><form id="admin-search">
+      <label class="search-label">Search people<input name="q" type="search" value="${escapeHtml(state.adminQuery)}" placeholder="Name or PSU email"></label>
+      <label class="search-label">Role<select name="role"><option value="">All roles</option>${['student','instructor','researcher','operator'].map(role =>
+        `<option value="${role}" ${state.adminRole === role ? 'selected' : ''}>${role}</option>`).join('')}</select></label>
+      <button class="button secondary">Search</button></form><div class="admin-people">${listing.accounts.map(account =>
+        `<button class="student-row ${state.adminSelected === account.id ? 'active' : ''}" data-account="${escapeHtml(account.id)}"><span><strong>${escapeHtml(account.name || account.email)}</strong><small>${escapeHtml(account.email || account.id)}</small></span>
+          <span class="badge ${account.disabled ? 'demo' : ''}">${escapeHtml(account.disabled ? 'Disabled' : account.role)}</span></button>`).join('') || '<p class="muted">No accounts match.</p>'}</div>
+      <div class="pager"><button class="button secondary" id="admin-prev" ${state.adminOffset === 0 ? 'disabled' : ''}>Previous</button>
+      <span>${escapeHtml(listing.total ? state.adminOffset + 1 : 0)}–${escapeHtml(Math.min(state.adminOffset + 50, listing.total))} of ${escapeHtml(listing.total)}</span>
+      <button class="button secondary" id="admin-next" ${state.adminOffset + 50 >= listing.total ? 'disabled' : ''}>Next</button></div></section>
+      <section class="panel admin-detail" id="admin-detail"><h2>${state.adminSelected ? 'Loading account…' : 'Select a person'}</h2>
+        ${state.adminSelected ? '' : '<p class="muted">Choose any faculty or student account to see its courses, calls, imports, reflections, and edit history.</p>'}</section></div>
+    <section class="panel"><h2>Recent activity across Kelvin</h2><div class="activity-feed">${overview.recent.map(item =>
+      `<button class="activity-line" data-account="${escapeHtml(item.accountId)}"><time>${escapeHtml(new Date(item.at).toLocaleString())}</time>
+        <strong>${escapeHtml(item.tool || item.method)}</strong><span>${escapeHtml(item.client || 'unknown client')} · ${escapeHtml(item.courseId || 'template')} · ${escapeHtml(item.status)}</span></button>`).join('') || '<p class="muted">No MCP calls yet.</p>'}</div></section>
+    <div class="admin-bottom"><section class="panel"><h2>Site traffic · 24 hours</h2><div class="activity-feed">${traffic.paths.map(item =>
+      `<div class="activity-line"><strong>${escapeHtml(item.path)}</strong><span>${escapeHtml(item.count)} requests</span></div>`).join('') || '<p class="muted">No site requests yet.</p>'}</div></section>
+      <section class="panel"><h2>Operator changes</h2><div class="activity-feed">${audit.rows.slice(0, 12).map(item =>
+        `<div class="activity-line"><time>${escapeHtml(new Date(item.at).toLocaleString())}</time><strong>${escapeHtml(item.action)}</strong>
+        <span>${escapeHtml(item.targetId || '')}</span></div>`).join('') || '<p class="muted">No operator changes yet.</p>'}</div></section></div>`;
+  body.querySelector('#admin-search').addEventListener('submit', event => {
+    event.preventDefault(); const form = new FormData(event.currentTarget);
+    state.adminQuery = String(form.get('q') || ''); state.adminRole = String(form.get('role') || '');
+    state.adminOffset = 0; state.adminSelected = null; renderAdmin().catch(e => showError(e.message));
+  });
+  body.querySelector('#admin-refresh').addEventListener('click', () => renderAdmin().catch(e => showError(e.message)));
+  for (const [id, direction] of [['admin-prev', -50], ['admin-next', 50]]) body.querySelector(`#${id}`).addEventListener('click', () => {
+    state.adminOffset = Math.max(0, state.adminOffset + direction); renderAdmin().catch(e => showError(e.message));
+  });
+  body.querySelectorAll('[data-account]').forEach(button => button.addEventListener('click', () => {
+    if (!button.dataset.account || button.dataset.account === 'null') return;
+    state.adminSelected = button.dataset.account; state.adminActivityOffset = 0;
+    renderAdmin().catch(e => showError(e.message));
+  }));
+  if (state.adminSelected) await renderAdminDetail();
+}
+async function renderAdminDetail() {
+  const id = encodeURIComponent(state.adminSelected);
+  const [detail, activity] = await Promise.all([
+    api(`/api/admin/accounts/${id}`), api(`/api/admin/accounts/${id}/activity?offset=${state.adminActivityOffset}`)]);
+  const node = document.querySelector('#admin-detail');
+  if (!node) return;
+  const account = detail.account;
+  node.innerHTML = `<div class="section-title"><div><h2>${escapeHtml(account.name || account.email)}</h2><p class="muted">${escapeHtml(account.email || account.id)} · ${escapeHtml(account.id)}</p></div>
+    <span class="badge">${escapeHtml(account.role)}</span></div>
+    <p class="muted">${escapeHtml(detail.counts.calls)} MCP calls · ${escapeHtml(detail.counts.reflections)} reflections · ${escapeHtml(detail.counts.imports)} chat imports</p>
+    ${detail.learning ? `<section class="admin-learning"><h3>Learning summary</h3><p>${escapeHtml(detail.learning.statement || 'No summary yet.')}</p>
+      <small>${escapeHtml(detail.learning.sourceCount || 0)} evidence items · ${escapeHtml(detail.learning.modelStatus || 'pending')}</small></section>` : ''}
+    ${detail.ownedCourses.length ? `<div class="owned-courses"><h3>Faculty courses</h3>${detail.ownedCourses.map(course =>
+      `<button class="button secondary" data-open-course="${escapeHtml(course.id)}">${escapeHtml(course.code)} · ${escapeHtml(course.title)}</button>`).join('')}</div>` : ''}
+    <details class="account-edit"><summary>Edit account</summary><form id="account-edit-form"><label>Name<input name="name" required maxlength="120" value="${escapeHtml(account.name || '')}"></label>
+      <label>Role<select name="role">${['student','instructor','researcher','operator'].map(role => `<option value="${role}" ${role === account.role ? 'selected' : ''}>${role}</option>`).join('')}</select></label>
+      <label>Course<select name="courseId"><option value="">No course</option>${state.courses.map(course =>
+        `<option value="${escapeHtml(course.id)}" ${course.id === account.courseId ? 'selected' : ''}>${escapeHtml(course.code)} · ${escapeHtml(course.title)}</option>`).join('')}</select></label>
+      <label class="inline-check"><input type="checkbox" name="disabled" ${account.disabled ? 'checked' : ''}> Disable account</label>
+      <button class="button">Save account</button><p id="admin-save-message" role="status"></p></form></details>
+    <h3>Activity and submitted material</h3><div class="admin-records">${activity.rows.map(row => `<article class="admin-record"><div class="record-meta">${escapeHtml(row.type)} · ${escapeHtml(new Date(row.at).toLocaleString())}</div>
+      <strong>${escapeHtml(row.tool || row.conversation || row.type)}</strong><p>${escapeHtml(row.text || row.statement || row.arguments?.question || row.arguments?.query || '')}</p>
+      <small>${escapeHtml(row.client || row.platform || '')} · ${escapeHtml(row.courseId || '')}</small>
+      ${row.note ? `<p class="admin-note"><strong>Operator note:</strong> ${escapeHtml(row.note.text)}</p>` : ''}
+      <form class="evidence-note" data-evidence="${escapeHtml(row.id)}"><input name="text" maxlength="2000" placeholder="Add an audit note or correction" required>
+      <button class="button secondary">Save note</button></form></article>`).join('') || '<p class="muted">No activity for this account yet.</p>'}</div>
+    <div class="pager"><button class="button secondary" id="activity-prev" ${state.adminActivityOffset === 0 ? 'disabled' : ''}>Previous</button>
+      <span>${escapeHtml(activity.total ? state.adminActivityOffset + 1 : 0)}–${escapeHtml(Math.min(state.adminActivityOffset + 50, activity.total))} of ${escapeHtml(activity.total)}</span>
+      <button class="button secondary" id="activity-next" ${state.adminActivityOffset + 50 >= activity.total ? 'disabled' : ''}>Next</button></div>`;
+  node.querySelector('#account-edit-form').addEventListener('submit', async event => {
+    event.preventDefault(); const form = event.currentTarget, values = Object.fromEntries(new FormData(form));
+    values.disabled = form.elements.disabled.checked;
+    try { await api(`/api/admin/accounts/${id}`, { method: 'PUT', body: values }); await renderAdmin(); }
+    catch (e) { node.querySelector('#admin-save-message').textContent = e.message; }
+  });
+  node.querySelectorAll('[data-open-course]').forEach(button => button.addEventListener('click', () => {
+    state.courseId = button.dataset.openCourse; state.tab = 'studio'; loadCourse().catch(e => showError(e.message));
+  }));
+  node.querySelectorAll('.evidence-note').forEach(form => form.addEventListener('submit', async event => {
+    event.preventDefault();
+    try { await api(`/api/admin/evidence/${encodeURIComponent(form.dataset.evidence)}/note`,
+      { method: 'PUT', body: { text: form.elements.text.value } }); await renderAdminDetail(); }
+    catch (e) { form.querySelector('button').textContent = e.message; }
+  }));
+  for (const [buttonId, direction] of [['activity-prev', -50], ['activity-next', 50]]) node.querySelector(`#${buttonId}`).addEventListener('click', () => {
+    state.adminActivityOffset = Math.max(0, state.adminActivityOffset + direction);
+    renderAdminDetail().catch(e => showError(e.message));
+  });
+}
+setInterval(() => {
+  if (state.tab === 'admin' && state.account?.role === 'operator' && !['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName))
+    renderAdmin().catch(() => {});
+}, 30000);
 (async () => {
   try {
-    if (state.token) { state.account = await api('/api/me'); state.tab = state.account.role === 'student' ? 'learning' : 'activity'; await loadWorkspace(); }
+    if (state.token) { state.account = await api('/api/me'); state.tab = state.account.role === 'student' ? 'learning' : state.account.role === 'operator' ? 'admin' : 'activity'; await loadWorkspace(); }
     else await welcome();
   } catch { sessionStorage.removeItem('kelvin-demo-token'); state.token = null; await welcome(); }
 })();

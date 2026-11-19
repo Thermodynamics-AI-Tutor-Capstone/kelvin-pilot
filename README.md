@@ -69,6 +69,16 @@ docker compose exec -T db psql -U kelvin -d kelvin -Atc 'SELECT count(*) FROM ke
 
 The pilot's PSU-email student flow does not verify identity. See the [Penn State SSO plan](docs/PENN-STATE-SSO-PLAN.md) for the IAM registration and integration steps.
 
+## Faculty studio and operator view
+
+The dashboard has a faculty studio for course cards and teaching skills. Faculty edits are drafts until published. Each course keeps the global template version it chose, so a later template update does not silently alter that course. An instructor can adopt the latest template, publish course changes, compare drafts with published text, and restore an earlier published item into a new draft. Operators can edit the global template and open any faculty course.
+
+The pedagogy lab runs fixed thermodynamics questions against Kelvin's configured local model, records the course and template versions, and lets a reviewer mark a response as following the rule, needing work, or uncertain. A local preview without a model shows context-only results; it cannot judge the tutoring response. MCP call records also carry template and pedagogy version numbers. Calls from external chat clients show which Kelvin rules were available, not the client's final answer.
+
+The operator's **All activity** tab searches faculty and student accounts, shows recent MCP use, imported prompts, reflections, learning summaries, and 24-hour site traffic, and links to each faculty course. Operators can correct account details and add notes to evidence records. Source events stay intact; the note and account edits have an audit trail. The operator view is separate from the privacy-thresholded faculty charts.
+
+For an isolated sample workspace, set `KELVIN_MCP_DATA_DIR` to a disposable local directory, set `KELVIN_PREVIEW_SEED=1`, and run `node scripts/seed-studio-preview.mjs`, supplying the preview account password on standard input. Never point that script at the GB10 data directory.
+
 ## Current pilot boundary
 
 The copied app still uses the demo's email-only student flow. Email ownership is not verified, so this build is for setup and controlled testing until Penn State provides an approved identity path. The repository includes the real ME 300 course cards and the student-facing transcripts already used by the demo. Course files, accounts, and usage recorded on the GB10 stay in its own database.
