@@ -14,14 +14,17 @@ import { classify } from './classify.mjs';
 import { writeRequestLog } from './request-log.mjs';
 import { persistenceReady } from './persistence.mjs';
 import { modelReady, modelName } from './model-client.mjs';
-import { contentForCourse, courseVersion, courseRevisions, reviseCourseItem, restoreCourseVersion, courseSchedule, saveCourseSchedule,
+import { contentForCourse, courseRevisions, courseSchedule, saveCourseSchedule,
   coursePosition, canEditCourse, sourceInventory } from './course-system.mjs';
 import { recordMcpCall, dreamCourse, courseInsights, studentInsights, importChatExport, studentImports, mcpCallEvents } from './learning-data.mjs';
 import { askKelvin } from './ask-kelvin.mjs';
+import { studioState, saveStudioDraft, publishStudio, adoptTemplate, restoreStudioItem } from './studio.mjs';
+import { adminOverview, adminAccounts, adminAccount, adminActivity, adminUpdateAccount, adminNoteEvidence, adminAudit, adminTraffic } from './admin-data.mjs';
+import { scenarios, runScenario, scenarioRuns, reviewScenario } from './pedagogy-lab.mjs';
 import { accountById, completeLogin, createOAuthProvider, loginPage } from './oauth.mjs';
 import { professors, studentForEmail, switchStudentProfessor, registerProfessor, signInProfessor, makeSession, sessionAccount, revokeSession,
   courses, courseById, createCourse, courseFiles, courseFileVersions, fileMetadata, addCourseFile, recordUsage,
-  studentSummary, courseAnalytics, stockCards } from './demo.mjs';
+  studentSummary, courseAnalytics } from './demo.mjs';
 
 const { cards, skills } = loadContent();
 const port = Number(process.env.PORT || 3337);
@@ -42,7 +45,7 @@ const error = message => ({ content: [{ type: 'text', text: message }], isError:
 async function makeMcp(user) {
   const course = user.courseId ? await courseById(user.courseId) : null;
   const files = course ? await courseFiles(course.id) : [];
-  const { cards, skills, version } = course ? await contentForCourse(course.id) : loadContent();
+  const { cards, skills, version, templateVersion, studioVersion } = await contentForCourse(course?.id || 'demo-me300');
   const schedule = course ? await courseSchedule(course.id) : null;
   const position = schedule ? coursePosition(schedule) : null;
   const semesterMatches = matches => {
@@ -54,9 +57,11 @@ async function makeMcp(user) {
     }).sort((a,b) => ({ current: 0, review: 1, general: 2, upcoming: 3 })[a.semesterRelevance] -
       ({ current: 0, review: 1, general: 2, upcoming: 3 })[b.semesterRelevance]);
   };
+  const pedagogyInstructions = ['what-next', 'answer-requests', 'response-pacing', 'misconception-repair']
+    .filter(id => skills.has(id)).map(id => `\n## ${id}\n${skills.get(id).body.slice(0, 2200)}`).join('').slice(0, 8500);
   const mcp = new McpServer({ name: 'kelvin-thermodynamics-me300', title: 'Kelvin: Penn State ME 300 Engineering Thermodynamics', version: '0.1.0' }, {
     capabilities: { tools: {} },
-    instructions: 'Kelvin provides real Penn State ME 300 Engineering Thermodynamics course content from Dr. Jacqueline O’Connor’s Summer 2023 Canvas section. Use it as the course reference for substantive thermodynamics questions: call course_map once per conversation, then search_course and get_card for the relevant topic or misconception before answering. When a student explicitly asks to be taught, tutored, quizzed, or drilled to mastery, load the socratic-tutor skill with get_teaching_skill and use the course cards as subject evidence. For one-off explanations, answer normally. For dates, grading, and policies, identify the Summer 2023 term and check the student’s current Canvas section. Do not save a learning reflection unless the student explicitly asks.'
+    instructions: `Kelvin provides Penn State ME 300 Engineering Thermodynamics course content. Use the selected course as the reference for substantive thermodynamics questions: call course_map once per conversation, then search_course and get_card before answering. For a request to be taught or quizzed, load the socratic-tutor skill with get_teaching_skill. For dates, grading, and policies, check the student’s current Canvas section. Do not save a learning reflection unless the student explicitly asks. Course version ${version || 0}; template version ${templateVersion || 0}; pedagogy version ${studioVersion || 0}. Current teaching procedures:${pedagogyInstructions}`
   });
   const publicSecurity = user.role === 'anonymous' ? { _meta: { securitySchemes: [{ type: 'noauth' }] } } : {};
   if (user.role !== 'anonymous') mcp.registerTool('my_account', { description: 'Show the Kelvin email, course, and role attached to this connector.' },
@@ -71,7 +76,7 @@ async function makeMcp(user) {
     });
   mcp.registerTool('course_map', { title: 'ME 300 thermodynamics course map', description: 'For thermodynamics questions, start here once per conversation. This is real Penn State ME 300 Engineering Thermodynamics course content: systems, properties, phase change, first and second laws, entropy, control volumes, and cycles. Returns the course map so you can choose the right topic card. Course logistics are from Summer 2023; current dates and policies come from the student’s Canvas.', ...publicSecurity }, () =>
     result({ subject: course?.title || 'Penn State ME 300 Engineering Thermodynamics', courseId: course?.id,
-      courseVersion: version || 0, schedule, semesterPosition: position,
+      courseVersion: version || 0, templateVersion, schedule, semesterPosition: position,
       sourceMaterial: 'actual Penn State course files', use: 'For a thermodynamics topic, search_course for matching cards, then get_card before explaining or tutoring. Check current Canvas for dates and policies.', provenance, course: metadata(cards.get('course:me300')),
       units: [...cards.values()].filter(c => c.kind === 'unit').map(metadata),
       uploadedFiles: files.map(fileMetadata) }));
@@ -99,7 +104,7 @@ async function makeMcp(user) {
   mcp.registerTool('ask_kelvin', { title: 'Ask Kelvin about ME 300 thermodynamics',
     description: 'Send a substantive student thermodynamics question to Kelvin. Kelvin records the question for the student learning record, retrieves course evidence, and uses a small model to draft a grounded tutoring answer when available. This is the question-first interaction style; course_map/search_course/get_card provide direct navigation instead.',
     inputSchema: { question: z.string().min(8).max(2000) } }, async ({ question }) =>
-    result(await askKelvin(question, cards, position)));
+    result(await askKelvin(question, cards, position, skills)));
   if (course) {
     mcp.registerTool('list_course_files', { description: 'List files uploaded by this course’s professor. Use when the student asks about a syllabus, assignment, or other course-specific document.' },
       () => result({ course: { id: course.id, title: course.title }, files: files.map(fileMetadata) }));
@@ -151,6 +156,7 @@ async function makeMcp(user) {
       return allowed ? result(await courseAnalytics(selected)) : error('Course unavailable');
     });
   }
+  mcp.kelvinVersions = { courseVersion: version || 0, templateVersion, pedagogyVersion: studioVersion };
   return mcp;
 }
 
@@ -170,12 +176,12 @@ async function handleMcp(req, res, user) {
     await transport.handleRequest(req, res, req.body);
     await recordMcpCall({ requestId: res.getHeader('X-Kelvin-Request-Id'), user, body: req.body,
       userAgent: req.headers['user-agent'], status: res.statusCode, durationMs: Date.now() - started,
-      courseVersion: user.courseId ? await courseVersion(user.courseId) : 0, cardId: queryCardId });
+      ...mcp.kelvinVersions, cardId: queryCardId });
   } catch (e) {
     console.error('MCP request failed:', e.message);
     try { await recordMcpCall({ requestId: res.getHeader('X-Kelvin-Request-Id'), user, body: req.body,
       userAgent: req.headers['user-agent'], status: 500, durationMs: Date.now() - started,
-      courseVersion: user.courseId ? await courseVersion(user.courseId) : 0, cardId: queryCardId }); } catch (logError) { console.error('MCP event logging failed:', logError.message); }
+      ...mcp.kelvinVersions, cardId: queryCardId }); } catch (logError) { console.error('MCP event logging failed:', logError.message); }
     if (!res.headersSent) { res.writeHead(500); res.end('MCP request failed'); }
   } finally {
     await transport.close();
@@ -221,14 +227,17 @@ app.get('/dashboard', (_req, res) => res.type('html').send(dashboardHtml));
 app.get('/dashboard/app.js', (_req, res) => res.type('js').send(dashboardJs));
 app.get('/dashboard/style.css', (_req, res) => res.type('css').send(dashboardCss));
 app.get('/api/professors', async (_req, res) => res.json(await professors()));
-app.get('/api/public-content', (_req, res) => res.json({ cards: stockCards(),
-  skills: [...skills].map(([name, skill]) => ({ id: name, name, description: skill.description })), files: [] }));
-app.get('/api/public-content/cards/:id', (req, res) => {
-  const card = cards.get(req.params.id);
+app.get('/api/public-content', async (_req, res) => {
+  const content = await contentForCourse('demo-me300');
+  return res.json({ cards: [...content.cards.values()].map(metadata),
+    skills: [...content.skills].map(([name, skill]) => ({ id: name, name, description: skill.description })), files: [] });
+});
+app.get('/api/public-content/cards/:id', async (req, res) => {
+  const card = (await contentForCourse('demo-me300')).cards.get(req.params.id);
   return card ? res.json({ ...metadata(card), content: card.body }) : res.status(404).json({ error: 'Card unavailable' });
 });
-app.get('/api/public-content/skills/:id', (req, res) => {
-  const skill = skills.get(req.params.id);
+app.get('/api/public-content/skills/:id', async (req, res) => {
+  const skill = (await contentForCourse('demo-me300')).skills.get(req.params.id);
   return skill ? res.json({ id: req.params.id, title: req.params.id.replaceAll('-', ' '), kind: 'skill',
     description: skill.description, content: skill.body }) : res.status(404).json({ error: 'Skill unavailable' });
 });
@@ -254,6 +263,50 @@ async function demoAccount(req, res, next) {
   req.demoToken = token;
   return next();
 }
+function operatorOnly(req, res, next) {
+  return req.demoAccount.role === 'operator' ? next() : res.status(403).json({ error: 'Operator account required' });
+}
+const pageNumber = value => Math.max(0, Math.min(100000, Number.parseInt(value, 10) || 0));
+app.get('/api/admin/overview', demoAccount, operatorOnly, async (_req, res) => res.json(await adminOverview()));
+app.get('/api/admin/traffic', demoAccount, operatorOnly, (_req, res) => res.json(adminTraffic()));
+app.get('/api/admin/accounts', demoAccount, operatorOnly, async (req, res) =>
+  res.json(await adminAccounts(req.query.q, req.query.role, pageNumber(req.query.offset))));
+app.get('/api/admin/accounts/:id', demoAccount, operatorOnly, async (req, res) => {
+  const data = await adminAccount(req.params.id);
+  return data ? res.json(data) : res.status(404).json({ error: 'Account unavailable' });
+});
+app.get('/api/admin/accounts/:id/activity', demoAccount, operatorOnly, async (req, res) => {
+  const data = await adminActivity(req.params.id, pageNumber(req.query.offset));
+  return data ? res.json(data) : res.status(404).json({ error: 'Account unavailable' });
+});
+app.put('/api/admin/accounts/:id', demoAccount, operatorOnly, async (req, res) => {
+  try { return res.json(await adminUpdateAccount(req.params.id, req.body || {}, req.demoAccount.id)); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.put('/api/admin/evidence/:id/note', demoAccount, operatorOnly, async (req, res) => {
+  try { return res.json(await adminNoteEvidence(req.params.id, req.body?.text, req.demoAccount.id)); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.get('/api/admin/audit', demoAccount, operatorOnly, async (req, res) => res.json(await adminAudit(pageNumber(req.query.offset))));
+app.get('/api/studio/template', demoAccount, async (req, res) => {
+  if (!['instructor','operator','researcher'].includes(req.demoAccount.role)) return res.sendStatus(403);
+  const content = await contentForCourse('demo-me300', req.demoAccount.role === 'operator' && req.query.draft === '1');
+  return res.json({ state: await studioState('demo-me300'), cards: [...content.cards.values()],
+    skills: [...content.skills].map(([id, skill]) => ({ ...skill, id })) });
+});
+app.post('/api/studio/template/draft', demoAccount, operatorOnly, async (req, res) => {
+  try { return res.status(201).json(await saveStudioDraft('template', 'demo-me300', req.demoAccount, null, req.body || {})); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.post('/api/studio/template/publish', demoAccount, operatorOnly, async (req, res) => {
+  try { return res.json(await publishStudio('template', 'demo-me300', req.demoAccount, null, req.body?.reason)); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.post('/api/studio/template/restore', demoAccount, operatorOnly, async (req, res) => {
+  try { return res.status(201).json(await restoreStudioItem('template', 'demo-me300', req.demoAccount, null,
+    req.body?.version, req.body?.kind, req.body?.itemId, req.body?.expectedRevision)); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
 app.post('/api/logout', demoAccount, async (req, res) => { await revokeSession(req.demoToken); res.sendStatus(204); });
 app.get('/api/me', demoAccount, async (req, res) => res.json(req.demoAccount));
 app.get('/api/student', demoAccount, async (req, res) => req.demoAccount.role === 'student'
@@ -274,7 +327,9 @@ app.get('/api/courses', demoAccount, async (req, res) => res.json((await courses
 app.post('/api/courses', demoAccount, async (req, res) => {
   if (!['instructor','operator'].includes(req.demoAccount.role)) return res.status(403).json({ error: 'Instructor or operator account required' });
   if (req.demoAccount.demoProfessor) return res.status(403).json({ error: 'This sample professor account is read-only' });
-  try { return res.status(201).json(await createCourse(req.demoAccount.id, req.body || {})); }
+  try { const course = await createCourse(req.demoAccount.id, req.body || {});
+    await adoptTemplate(course.id, req.demoAccount, course);
+    return res.status(201).json(course); }
   catch (e) { return res.status(400).json({ error: e.message }); }
 });
 async function requireCourse(req, res, next) {
@@ -287,10 +342,48 @@ async function requireCourse(req, res, next) {
 }
 app.get('/api/courses/:courseId', demoAccount, requireCourse, async (req, res) => {
   const content = await contentForCourse(req.course.id);
-  return res.json({ course: req.course, version: content.version, schedule: await courseSchedule(req.course.id),
+  return res.json({ course: req.course, version: content.version, studio: await studioState(req.course.id), schedule: await courseSchedule(req.course.id),
     position: coursePosition(await courseSchedule(req.course.id)), cards: [...content.cards.values()].map(metadata),
     skills: [...content.skills].map(([name, skill]) => ({ id: name, name, description: skill.description })),
     files: (await courseFiles(req.course.id)).map(fileMetadata) });
+});
+app.get('/api/courses/:courseId/studio', demoAccount, requireCourse, async (req, res) => {
+  if (!['instructor','operator'].includes(req.demoAccount.role)) return res.sendStatus(403);
+  const content = await contentForCourse(req.course.id, req.query.draft === '1');
+  return res.json({ state: await studioState(req.course.id), cards: [...content.cards.values()],
+    skills: [...content.skills].map(([id, skill]) => ({ ...skill, id })) });
+});
+app.post('/api/courses/:courseId/studio/draft', demoAccount, requireCourse, async (req, res) => {
+  try { return res.status(201).json(await saveStudioDraft('course', req.course.id, req.demoAccount, req.course, req.body || {})); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.post('/api/courses/:courseId/studio/publish', demoAccount, requireCourse, async (req, res) => {
+  try { return res.json(await publishStudio('course', req.course.id, req.demoAccount, req.course, req.body?.reason)); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.post('/api/courses/:courseId/studio/adopt-template', demoAccount, requireCourse, async (req, res) => {
+  try { return res.json(await adoptTemplate(req.course.id, req.demoAccount, req.course)); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.post('/api/courses/:courseId/studio/restore', demoAccount, requireCourse, async (req, res) => {
+  try { return res.status(201).json(await restoreStudioItem('course', req.course.id, req.demoAccount, req.course,
+    req.body?.version, req.body?.kind, req.body?.itemId, req.body?.expectedRevision)); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.get('/api/courses/:courseId/pedagogy/scenarios', demoAccount, requireCourse, async (req, res) =>
+  ['instructor','operator','researcher'].includes(req.demoAccount.role) ? res.json(scenarios) : res.sendStatus(403));
+app.get('/api/courses/:courseId/pedagogy/runs', demoAccount, requireCourse, async (req, res) =>
+  ['instructor','operator','researcher'].includes(req.demoAccount.role) ?
+    res.json(await scenarioRuns(req.course.id, pageNumber(req.query.offset))) : res.sendStatus(403));
+app.post('/api/courses/:courseId/pedagogy/runs', demoAccount, requireCourse, async (req, res) => {
+  if (!['instructor','operator'].includes(req.demoAccount.role)) return res.sendStatus(403);
+  try { return res.status(201).json(await runScenario(req.course.id, req.body?.scenarioId, req.body?.mode, req.demoAccount.id)); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+});
+app.put('/api/courses/:courseId/pedagogy/runs/:runId/review', demoAccount, requireCourse, async (req, res) => {
+  if (!['instructor','operator'].includes(req.demoAccount.role)) return res.sendStatus(403);
+  try { return res.json(await reviewScenario(req.course.id, req.params.runId, req.demoAccount.id, req.body || {})); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
 });
 app.get('/api/courses/:courseId/cards/:cardId', demoAccount, requireCourse, async (req, res) => {
   const card = (await contentForCourse(req.course.id)).cards.get(req.params.cardId);
@@ -323,12 +416,17 @@ app.get('/api/courses/:courseId/analytics', demoAccount, requireCourse, async (r
 app.get('/api/courses/:courseId/revisions', demoAccount, requireCourse, async (req, res) =>
   ['instructor','operator'].includes(req.demoAccount.role) ? res.json(await courseRevisions(req.course.id)) : res.status(403).json({ error: 'Instructor account required' }));
 app.post('/api/courses/:courseId/revisions', demoAccount, requireCourse, async (req, res) => {
-  try { return res.status(201).json(await reviseCourseItem(req.course.id, req.demoAccount, req.course, req.body || {})); }
+  try { return res.status(201).json(await saveStudioDraft('course', req.course.id, req.demoAccount, req.course, req.body || {})); }
   catch (e) { return res.status(400).json({ error: e.message }); }
 });
 app.post('/api/courses/:courseId/revisions/restore', demoAccount, requireCourse, async (req, res) => {
-  try { return res.status(201).json(await restoreCourseVersion(req.course.id, req.demoAccount, req.course,
-    req.body?.itemId, req.body?.revisionId, req.body?.expectedVersion)); }
+  try {
+    const prior = (await courseRevisions(req.course.id)).find(item => item.id === req.body?.revisionId && item.itemId === req.body?.itemId);
+    if (!prior || !['card','skill'].includes(prior.kind)) return res.status(404).json({ error: 'Revision unavailable' });
+    return res.status(201).json(await saveStudioDraft('course', req.course.id, req.demoAccount, req.course,
+      { kind: prior.kind, itemId: prior.itemId, value: prior.value, reason: `Restored earlier revision ${prior.version}`,
+        expectedRevision: req.body?.expectedRevision }));
+  }
   catch (e) { return res.status(400).json({ error: e.message }); }
 });
 app.put('/api/courses/:courseId/schedule', demoAccount, requireCourse, async (req, res) => {
