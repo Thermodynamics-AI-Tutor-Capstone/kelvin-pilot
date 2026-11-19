@@ -176,7 +176,7 @@ export async function completeLogin(input) {
   } else if (input.action === 'create' && !dashboard) account = await createStudent(String(input.name || ''), password, input.share === 'yes');
   else if (input.action === 'sign-in') account = await signIn(String(input.account || ''), password);
   if (!account) return { error: 'The name, account, or password was not accepted.' };
-  if (dashboard && account.role !== 'instructor') return { error: 'An instructor account is required.' };
+  if (dashboard && !['instructor', 'operator'].includes(account.role)) return { error: 'An instructor or operator account is required.' };
   const code = secret();
   await mutateState(oauthKey, emptyState(), data => {
     const current = data.pending[hex(requestId)];

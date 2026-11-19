@@ -32,7 +32,7 @@ export async function professors() {
   const accounts = await readState(accountsKey, []);
   return [{ id: stock.professorId, name: 'Kelvin ME 300 template', courses: [stock] },
     { id: oconnor.professorId, name: 'Dr. Jacqueline O’Connor (archived Summer 2023 section)', courses: [oconnor] },
-    ...accounts.filter(a => a.role === 'instructor' && !a.disabled)
+    ...accounts.filter(a => ['instructor', 'operator'].includes(a.role) && !a.disabled)
     .map(a => ({ id: a.id, name: a.name, courses: all.filter(c => c.professorId === a.id) }))];
 }
 export async function studentForEmail(emailInput) {

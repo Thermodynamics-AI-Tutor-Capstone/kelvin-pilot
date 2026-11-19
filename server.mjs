@@ -399,7 +399,7 @@ app.all('/mcp', requireBearerAuth({ verifier: oauth, requiredScopes: ['mcp:tools
   const account = await accountById(req.auth?.extra?.accountId);
   if (!account) return res.status(401).json({ error: 'Account is unavailable' });
   return handleMcp(req, res, { id: account.id, name: account.name, role: account.role, account: true,
-    courseId: account.role === 'instructor' ? `course-${account.id}` : account.courseId || null,
+    courseId: ['instructor', 'operator'].includes(account.role) ? `course-${account.id}` : account.courseId || null,
     demoEmailOnly: Boolean(account.demoEmailOnly) });
 });
 export default app;

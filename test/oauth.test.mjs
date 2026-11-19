@@ -138,8 +138,13 @@ test('professors own courses and files; students choose and switch professors th
     assert.ok(!JSON.stringify(analytics.body).includes('I practiced entropy'));
     const accountsPath = join(dir, 'accounts.json');
     const accounts = JSON.parse(readFileSync(accountsPath, 'utf8'));
+    accounts.find(item => item.id === first.body.account.id).role = 'operator';
     accounts.find(item => item.id === second.body.account.id).demoProfessor = true;
     writeFileSync(accountsPath, JSON.stringify(accounts));
+    assert.ok((await api('/api/professors')).body.some(item => item.id === first.body.account.id));
+    const operatorLogin = await api('/api/professor-session', 'POST', { email: 'teacher1@psu.edu', password: 'long-demo-password-1' });
+    assert.equal(operatorLogin.body.account.role, 'operator');
+    assert.ok((await api('/api/courses', 'GET', null, operatorLogin.body.token)).body.some(item => item.id === 'course-' + second.body.account.id));
     const demoLogin = await api('/api/professor-session', 'POST', { email: 'teacher2@psu.edu', password: 'long-demo-password-2' });
     assert.equal(demoLogin.body.account.demoProfessor, true);
     assert.equal((await api('/api/courses', 'POST', { code: 'ME 302', title: 'Another course' }, demoLogin.body.token)).status, 403);
