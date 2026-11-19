@@ -1,128 +1,70 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f5f7f6" />
-    <meta
-      name="description"
-      content="Kelvin connects AI assistants to Penn State ME 300 thermodynamics course context."
-    />
-    <title>Kelvin | Thermodynamics course context for AI</title>
-    <link rel="stylesheet" href="/landing/style.css" />
-  </head>
-  <body>
-    <header class="topbar">
-      <a class="brand" href="/" aria-label="Kelvin home"
-        ><span class="brandmark" aria-hidden="true">K</span
-        ><span>Kelvin</span></a
-      >
-      <nav aria-label="Main navigation">
-        <a class="nav-link" href="#how-it-works">How it works</a>
-        <a class="nav-button" href="/dashboard"
-          >Open dashboard <span aria-hidden="true">↗</span></a
-        >
-      </nav>
-    </header>
-
-    <main>
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-copy">
-          <p class="eyebrow">Penn State ME 300 · Engineering Thermodynamics</p>
-          <h1 id="hero-title">
-            Your thermodynamics course, connected to your AI assistant.
-          </h1>
-          <p class="lead">
-            Kelvin gives AI assistants access to ME 300 course material, common
-            misconceptions, and teaching approaches. Students can ask questions
-            in their AI assistant and get help grounded in the course.
-          </p>
-          <div class="hero-actions">
-            <a class="button" href="/dashboard"
-              >Open dashboard <span aria-hidden="true">↗</span></a
-            >
-            <a class="text-link" href="#how-it-works"
-              >See how Kelvin works <span aria-hidden="true">↓</span></a
-            >
-          </div>
-        </div>
-        <div class="context-card" aria-label="How a question uses Kelvin">
-          <span class="card-label">A question with course context</span>
-          <p class="question">
-            “Why is enthalpy used in the turbine energy balance?”
-          </p>
-          <div class="context-line">
-            <span class="dot" aria-hidden="true"></span
-            ><span>Find the relevant ME 300 topic</span>
-          </div>
-          <div class="context-line">
-            <span class="dot" aria-hidden="true"></span
-            ><span>Check related misconceptions</span>
-          </div>
-          <div class="context-line">
-            <span class="dot" aria-hidden="true"></span
-            ><span>Guide the next step</span>
-          </div>
-        </div>
-      </section>
-
-      <section class="how" id="how-it-works" aria-labelledby="how-title">
-        <div class="section-head">
-          <p class="eyebrow">How it works</p>
-          <h2 id="how-title">
-            Course context in the tools students already use
-          </h2>
-          <p>
-            Kelvin is a Model Context Protocol (MCP) server. An AI assistant
-            connects to it to look up course information while helping a
-            student.
-          </p>
-        </div>
-        <div class="steps">
-          <article class="step">
-            <span class="step-number">01</span>
-            <h3>Connect</h3>
-            <p>
-              Add Kelvin as a custom MCP connector in an AI assistant that
-              supports remote MCP.
-            </p>
-          </article>
-          <article class="step">
-            <span class="step-number">02</span>
-            <h3>Ask</h3>
-            <p>
-              Kelvin supplies the relevant course topics, misconception cards,
-              and tutoring approaches.
-            </p>
-          </article>
-          <article class="step">
-            <span class="step-number">03</span>
-            <h3>Review</h3>
-            <p>
-              Students can see their saved learning reflections. Instructors can
-              explore course content and class-level trends in the dashboard.
-            </p>
-          </article>
-        </div>
-        <div class="connector">
-          <div>
-            <span class="card-label">Kelvin MCP address</span>
-            <p>
-              Use this URL when your AI assistant asks for the server address.
-            </p>
-          </div>
-          <code>https://kelvin.me.psu.edu/mcp</code>
-        </div>
-      </section>
-    </main>
-
-    <footer>
-      <span
-        >Built by the Thermodynamics AI Tutor Capstone team at Penn State.</span
-      >
-      <a href="https://github.com/Thermodynamics-AI-Tutor-Capstone/kelvin-pilot"
-        >View the project on GitHub <span aria-hidden="true">↗</span></a
-      >
-    </footer>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7f6">
+  <meta name="description" content="Connect Kelvin's Penn State ME 300 course tools to your AI assistant.">
+  <title>Kelvin | Connect your AI assistant to ME 300</title>
+  <link rel="stylesheet" href="/landing/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Kelvin home"><span class="brandmark" aria-hidden="true">K</span><span>Kelvin</span></a>
+    <nav aria-label="Main navigation"><a class="nav-link" href="#how-it-works">How it works</a><a class="nav-link" href="#connect">Connect</a><a class="nav-button" href="/dashboard">Open dashboard</a></nav>
+  </header>
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Penn State ME 300 · Engineering Thermodynamics</p>
+        <h1 id="hero-title">Bring your course into your AI conversation.</h1>
+        <p class="lead">Kelvin lets a compatible AI assistant look up ME 300 topics, course materials, and tutoring approaches while you ask questions. You stay in your usual chat app.</p>
+        <div class="hero-actions"><a class="button" href="#connect">Connect Kelvin</a><a class="text-link" href="#how-it-works">See how it works</a></div>
+      </div>
+      <div class="context-card" aria-label="Example Kelvin question">
+        <span class="card-label">Try asking</span>
+        <p class="question">“Why is enthalpy used in the turbine energy balance? Use Kelvin's ME 300 material.”</p>
+        <div class="context-line"><span class="dot" aria-hidden="true"></span><span>Find the relevant course topic</span></div>
+        <div class="context-line"><span class="dot" aria-hidden="true"></span><span>Read the card and related misconceptions</span></div>
+        <div class="context-line"><span class="dot" aria-hidden="true"></span><span>Explain the next step in your chat</span></div>
+      </div>
+    </section>
+    <section class="how" id="how-it-works" aria-labelledby="how-title">
+      <div class="section-head">
+        <p class="eyebrow">The short version</p>
+        <h2 id="how-title">What is an MCP server?</h2>
+        <p>Model Context Protocol (MCP) is a way for an AI assistant to use tools outside its own chat. Kelvin is the course tool: your assistant can request a course map, search for a topic, and read the matching material before it answers.</p>
+      </div>
+      <div class="steps">
+        <article class="step"><span class="step-number">1</span><h3>You ask in your chat</h3><p>Ask a normal ME 300 question. Name Kelvin if your assistant does not select it automatically.</p></article>
+        <article class="step"><span class="step-number">2</span><h3>Kelvin supplies context</h3><p>It offers topic and misconception cards, teaching skills, and files your instructor has added for your course.</p></article>
+        <article class="step"><span class="step-number">3</span><h3>Your assistant responds</h3><p>The assistant uses that material to guide you. Kelvin also has a question-first tutoring tool backed by the GB10's model.</p></article>
+      </div>
+      <div class="plain-note"><strong>What gets recorded?</strong> Kelvin logs requests and MCP tool activity for service health and course trends. It does not receive your whole chat transcript through MCP. Learning reflections are saved when you explicitly ask. The pilot asks for a PSU email but does not verify ownership yet.</div>
+    </section>
+    <section class="connect-section" id="connect" aria-labelledby="connect-title">
+      <div class="section-head"><p class="eyebrow">Get connected</p><h2 id="connect-title">Choose your chat app</h2><p>Use the same Kelvin address in each app. Connection menus and plan support differ, so follow the guide for yours.</p></div>
+      <div class="connector"><div><span class="card-label">Kelvin MCP address</span><p>Copy the full URL, including <code>/mcp</code>.</p></div><code class="server-url">https://kelvin.me.psu.edu/mcp</code></div>
+      <div class="guide-list">
+        <details class="client-guide" open><summary><span><strong>Claude</strong><small>Free, Pro, Max, Ultra, Team, Enterprise</small></span><span class="guide-action">Steps</span></summary>
+          <ol><li>Open <strong>Customize → Connectors</strong> and choose <strong>Add custom connector</strong>. On some accounts this is under <strong>Plugins</strong>.</li><li>Name it <strong>Kelvin</strong> and enter the URL above.</li><li>Continue with the detected sign-in settings. On Kelvin's page, enter your PSU email and choose your professor's course.</li><li>Enable Kelvin in your conversation and try the sample question above.</li></ol>
+          <p class="guide-foot">Claude Free allows one custom connector. <a href="https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp">Claude's connector guide</a></p>
+        </details>
+        <details class="client-guide"><summary><span><strong>ChatGPT</strong><small>Business and Enterprise/Edu; Pro has limited read access</small></span><span class="guide-action">Steps</span></summary>
+          <ol><li>Check that your plan or workspace allows custom MCP connections. ChatGPT Free does not currently offer direct custom MCP setup.</li><li>On ChatGPT web, open <strong>Plugins → Add custom MCP server</strong> and enter the URL above. Your workspace admin may need to approve it.</li><li>Choose OAuth sign-in, review the tools and permissions, and create the connection.</li><li>In a new chat, select Kelvin with <strong>@</strong> and ask a thermodynamics question.</li></ol>
+          <p class="guide-foot">Pro connections are limited to read/fetch tools, so some Kelvin features may be unavailable. <a href="https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt">ChatGPT's MCP guide</a></p>
+        </details>
+        <details class="client-guide"><summary><span><strong>Gemini</strong><small>Personal Google account; US, 18+, English, Keep Activity on</small></span><span class="guide-action">Steps</span></summary>
+          <ol><li>On a computer, open <strong>Settings → Connected Apps</strong>. If needed, open <strong>Personal Intelligence → Connected Apps</strong>.</li><li>Under <strong>Custom apps</strong>, choose <strong>Add a custom app</strong> and enter the URL above.</li><li>Continue through sign-in. On Kelvin's page, enter your PSU email and choose your professor's course.</li><li>In chat, type <strong>@</strong> and select Kelvin.</li></ol>
+          <p class="guide-foot">This feature does not support school Google accounts. <a href="https://support.google.com/gemini/answer/17209137">Gemini's custom app guide</a></p>
+        </details>
+        <details class="client-guide"><summary><span><strong>Another MCP client</strong><small>Remote HTTPS MCP and OAuth required</small></span><span class="guide-action">Steps</span></summary>
+          <ol><li>Find the option to add a <strong>remote MCP server</strong>.</li><li>Paste the URL above as the server address.</li><li>Allow OAuth sign-in and choose your course on Kelvin's page.</li><li>Enable Kelvin's tools and ask the client to use Kelvin for an ME 300 topic.</li></ol>
+        </details>
+      </div>
+      <div class="dashboard-callout"><div><h2>Already connected?</h2><p>Open the dashboard to see your learning reflections or, if you teach the course, its content and activity trends.</p></div><a class="button" href="/dashboard">Open dashboard</a></div>
+    </section>
+  </main>
+  <footer><span>Built by the Thermodynamics AI Tutor Capstone team at Penn State.</span><a href="https://github.com/Thermodynamics-AI-Tutor-Capstone/kelvin-pilot">View the project on GitHub</a></footer>
+</body>
 </html>

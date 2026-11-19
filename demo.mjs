@@ -32,7 +32,7 @@ export async function professors() {
   const accounts = await readState(accountsKey, []);
   return [{ id: stock.professorId, name: 'Kelvin ME 300 template', courses: [stock] },
     { id: oconnor.professorId, name: 'Dr. Jacqueline O’Connor (archived Summer 2023 section)', courses: [oconnor] },
-    ...accounts.filter(a => a.role === 'instructor' && !a.disabled)
+    ...accounts.filter(a => ['instructor', 'operator'].includes(a.role) && !a.disabled)
     .map(a => ({ id: a.id, name: a.name, courses: all.filter(c => c.professorId === a.id) }))];
 }
 export async function studentForEmail(emailInput) {
@@ -75,7 +75,7 @@ export async function switchStudentProfessor(studentId, professorId, courseId) {
 export async function registerProfessor({ email: input, name, password }) {
   const email = normalizedEmail(input);
   if (!email || typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 120 ||
-      typeof password !== 'string' || password.length < 12 || password.length > 200) throw new Error('Enter a PSU email, name, and password of at least 12 characters');
+      typeof password !== 'string' || password.length < 8 || password.length > 200) throw new Error('Enter a PSU email, name, and password of at least 8 characters');
   const salt = randomBytes(16).toString('hex');
   return mutateState(accountsKey, [], data => {
     if (data.some(a => a.email === email && ['instructor','operator','researcher'].includes(a.role))) throw new Error('An account already uses this email');
