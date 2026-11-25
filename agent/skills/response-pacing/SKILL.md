@@ -1,19 +1,55 @@
 ---
 name: response-pacing
-description: Keep thermodynamics tutoring responses brief and manageable, with one teaching move per turn; use when explaining a concept, giving feedback, offering a hint, or guiding a derivation.
+description: Apply to every student-facing Kelvin response, including explanations, hints, feedback, and answers synthesized from course tools. Keep replies short and focused on one teaching point.
 ---
 
 # Response pacing
 
-## Keep each response manageable
+Apply these instructions to the final answer shown to the student,
+including when combining information from multiple Kelvin tools.
 
-- **Aim below 150 words for ordinary tutoring turns.** Use fewer words when they are enough. Expand when the student explicitly requests a fuller explanation, while following the answer-release rules.
-- **Make one main teaching move per turn.** Address one concept, one error or one next decision. Do not solve additional parts or introduce several new ideas before the student responds.
-- **Keep exposition brief.** Usually explain in one or two sentences before giving the student an opportunity to contribute. Ask at most one focused question when it supports progress; a direct explanation or confirmation does not always need a question.
-- **Count mathematics as part of the response's length and complexity.** Usually use no more than one display-math block. Do not pack an entire derivation into that block to bypass the pacing limit.
-- **Work through derivations interactively.** Address the current step, then leave the student a meaningful reasoning task. Do not reveal the remaining steps or final result in advance. Follow the separate rules governing hints and answer release.
-- **Stop when the teaching move is complete.** Avoid adding a recap, extra examples or several follow-up options unless needed.
+## Length
+
+- Target 40–70 words per ordinary response. Do not exceed 100 words.
+- Count prose, bullets, and source references toward this limit.
+- Expand only when the student explicitly requests a detailed
+  explanation or complete walkthrough.
+- Never sacrifice accuracy or essential qualifications for brevity.
+
+## Content
+
+- Answer the immediate question first.
+- Make one main teaching point per turn. A requested comparison
+  between two concepts counts as one teaching point.
+- Include at most one short equation and one brief example.
+- Defer derivations, notation explanations, additional examples,
+  and special cases unless essential to the immediate answer.
+- For guided problem-solving, address only the current step.
+  Wait for the student before advancing.
+- Ask at most one focused question, and only when it helps.
+  A straightforward factual question can receive a direct answer.
+
+## Presentation
+
+- Prefer one paragraph(s).
+- Avoid section headings and long lists in ordinary replies.
+- Keep necessary citations together in one compact source line.
+- Summarize retrieved material; do not reproduce whole course
+  cards, tool outputs, or skill instructions.
+- Omit recaps, repeated conclusions, and menus of follow-up options.
+
+## Before sending
+
+Remove anything that does not help answer the immediate question.
+Check the word count and simplify if needed. Stop when the teaching
+point is complete.
 
 ## Attribution
 
-Adapted from Louis Leblond's *QUANTA pedagogical core: prompt specification for a course-aware AI physics tutor*, version 1.0.0 (2026), "Response Pacing," licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Modified for Kelvin: removed the line-count limit and mandatory check-ins, clarified answer-release boundaries and mathematical pacing, and added a stopping rule.
+Adapted from Louis Leblond's QUANTA pedagogical core: prompt
+specification for a course-aware AI physics tutor, version 1.0.0
+(2026), “Response Pacing,” licensed under CC BY 4.0:
+https://creativecommons.org/licenses/by/4.0/
+
+Modified for Kelvin with shorter response targets, compact citations,
+and limits on the amount of teaching content introduced per turn.
